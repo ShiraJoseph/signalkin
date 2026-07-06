@@ -1,64 +1,119 @@
-# Signalkin
+# signalkin
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 22.0.0.
+Relationships and everyday collection methods for [`@ngrx/signals`](https://ngrx.io/guide/signals) entities.
 
-## Code scaffolding
+`@ngrx/signals/entities` gives you normalized collections; signalkin adds what you usually hand-write on top of them:
 
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+- **`withEntityAccessors`** — one call that sets up a collection AND its standard methods (add/set/upsert/update/remove families, lookups, counts), all named by collection.
+- **`withEntityRelationship`** — relate two collections (1:many, N:many, m:n) with typed lookups in both directions, auto-indexed from foreign keys, plus link mutations.
+- **`withTransitiveRelationship`** — "grandparent" lookups that walk through intermediary collections, composing the direct relationships you already registered.
 
-```bash
-ng generate component component-name
+Everything is a plain `signalStoreFeature` built only on public `@angular/core` + `@ngrx/signals` APIs, with no state duplication for FK-derived links (indexes are `computed`) and no effects or watchers.
+
+## Install
+
+```
+npm install signalkin
 ```
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+Peer dependencies: `@angular/core` and `@ngrx/signals` (which provides `@ngrx/signals/entities`).
 
-```bash
-ng generate --help
+## Quickstart
+
+```ts
+import { signalStore, type } from '@ngrx/signals';
+import { entityConfig } from '@ngrx/signals/entities';
+import { withEntityAccessors, withEntityRelationship, withTransitiveRelationship } from 'signalkin';
+
+interface Library { id: string; name: string; }
+interface Shelf   { id: string; libraryId: string; }
+interface Book    { id: string; shelfId: string; title: string; }
+
+const libraryConfig = entityConfig({ entity: type<Library>(), collection: 'library' });
+const shelfConfig = entityConfig({ entity: type<Shelf>(), collection: 'shelf' });
+const bookConfig = entityConfig({ entity: type<Book>(), collection: 'book' });
+
+export const CatalogStore = signalStore(
+  { providedIn: 'root' },
+  withEntityAccessors(libraryConfig),
+  withEntityAccessors(shelfConfig),
+  withEntityAccessors(bookConfig),
+  withEntityRelationship({ name: 'library', count: 1 }, { name: 'shelf', count: 'many' }),
+  withEntityRelationship({ name: 'shelf', count: 1 }, { name: 'book', count: 'many' }),
+  withTransitiveRelationship({ from: 'library', to: 'book', through: 'shelf' }),
+);
 ```
 
-## Building
+```ts
+const store = inject(CatalogStore);
 
-To build the library, run:
-
-```bash
-ng build signalkin
+store.addBook({ id: 'b1', shelfId: 's1', title: 'Dune' });   // withEntityAccessors
+store.booksByShelfId('s1');                                  // -> Book[]        (FK-indexed, reactive)
+store.shelfByBook(book);                                     // -> Shelf | undefined
+store.booksByLibrary(library);                               // -> Book[]        (walks library → shelf → book)
 ```
 
-This command will compile your project, and the build artifacts will be placed in the `dist/` directory.
+## `withEntityAccessors(config)`
 
-### Publishing the Library
+Composes `withEntities(config)` itself (so `bookEntityMap()` / `bookIds()` / `bookEntities()` come along) and adds, for `collection: 'book'`:
 
-Once the project is built, you can publish your library by following these steps:
+| Kind | Members |
+|---|---|
+| Signals | `books()`, `bookMap()`, `bookCount()` |
+| Lookups | `bookById(id)`, `hasBook(id)` |
+| Add | `addBook(book)`, `addBooks(books)`, `prependBook(book)`, `prependBooks(books)` |
+| Set | `setBook(book)`, `setBooks(books)`, `setAllBooks(books)` |
+| Upsert | `upsertBook(book)`, `upsertBooks(books)` |
+| Update | `updateBook(id, changes)`, `updateBooks(ids \| predicate, changes)`, `updateAllBooks(changes)` |
+| Remove | `removeBook(id)`, `removeBooks(ids \| predicate)`, `removeAllBooks()` |
 
-1. Navigate to the `dist` directory:
+`changes` follows ngrx's `EntityChanges`: a `Partial<Book>` or an `(book) => Partial<Book>` updater. The bulk update/remove methods accept an id array or an `(entity) => boolean` predicate.
 
-   ```bash
-   cd dist/signalkin
-   ```
+## `withEntityRelationship(from, to, options?)`
 
-2. Run the `npm publish` command to publish your library to the npm registry:
-   ```bash
-   npm publish
-   ```
+Each side is `{ name, count, selectPrimaryId?, selectForeignId? }`:
 
-## Running unit tests
+- `name` — the collection name; the entity type is inferred from the store by this name.
+- `count` — how many of THAT side relate to one of the other: `1`, a fixed number (e.g. `2`), or `'many'`. Drives generated names and return shapes (single value vs array).
+- `selectPrimaryId` — how to read this entity's own id (default the `id` property; keep it matching the collection's `selectId`). A typed getter lets branded id types flow through id-returning methods.
+- `selectForeignId` — how to read this entity's foreign key to the other side. Set it ONLY on a side whose entity actually stores the key. Defaults: `` `${otherName}Id` `` when the side links to one of the other, `` `${otherName}Ids` `` (an array) when it links to more than one.
 
-To execute unit tests with the [Karma](https://karma-runner.github.io) test runner, use the following command:
+`options`: `{ autoIndex?: boolean }` — default `true`; set `false` to index only explicit `add`/`remove`/`move` links.
 
-```bash
-ng test
-```
+For `withEntityRelationship({ name: 'library', count: 1 }, { name: 'book', count: 'many' })`:
 
-## Running end-to-end tests
+| Kind | Members |
+|---|---|
+| Index signals | `libraryBookMap()`, `bookLibraryMap()` (pruned id adjacency) |
+| Lookups | `booksByLibrary(library)`, `booksByLibraryId(id)`, `bookIdsByLibrary(library)`, `bookIdsByLibraryId(id)` and the reverse four (`libraryByBook`, ...) |
+| Checks | `libraryHasBook(libraryId, bookId)`, `bookHasLibrary(bookId, libraryId)`, `bookCountByLibrary(id)`, `libraryCountByBook(id)` |
+| Mutations | `addBookToLibrary(libraryId, bookId)`, `removeBookFromLibrary(libraryId, bookId)`, `moveBookToLibrary(bookId, newLibraryId)` |
 
-For end-to-end (e2e) testing, run:
+A side whose `count` is a fixed number of 2 or more also gets a variadic **composite set-lookup** — its full id-set pins exactly one of the other side. E.g. with `{ name: 'aisle', count: 2 }` ↔ `{ name: 'book', count: 'many' }`: `bookByAisles(...aisles)`, `bookByAisleIds(...ids)`, `bookIdByAisles(...aisles)`, `bookIdByAisleIds(...ids)` (order-insensitive).
 
-```bash
-ng e2e
-```
+### How linking works
 
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
+- **Auto-indexing:** any entity carrying the other side's id is indexed automatically and stays in sync as entities are added, removed, or re-pointed. It's a `computed` over the collections — no watchers, no stored duplicates.
+- **Entities are never written.** Deleting a library drops it from the index but leaves each book's `libraryId` untouched.
+- **Manual links** (`addBookToLibrary` etc.) cover entities without a foreign key, and m:n relationships that have no single FK.
+- **Ordering is enforced at compile time:** placing a relationship before its two `withEntities`/`withEntityAccessors` collections is a type error.
 
-## Additional Resources
+## `withTransitiveRelationship({ from, to, through, selectFromId?, selectToId? })`
 
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+Read-only lookups between two collections with no FK to each other, by walking the adjacency maps of the direct relationships along the path. `through` is a single collection name or an ordered list for 3rd/4th-degree links.
+
+For `{ from: 'author', to: 'comment', through: 'post' }`: `commentsByAuthor(author)`, `commentsByAuthorId(id)`, `commentIdsByAuthor(author)`, `commentIdsByAuthorId(id)` plus the reverse four. Results are arrays in both directions (a walk can fan out) and are deduped.
+
+Register the direct relationship for every hop BEFORE the transitive one. The two endpoint collections are type-checked; the intermediate hop maps can't be (variadic path), so a missing hop throws a descriptive error at call time instead.
+
+## Known limitations
+
+- **Naive pluralization:** generated names append `s` (`book` → `books`). Irregular nouns come out as e.g. `librarys` — pick collection names with regular plurals.
+- **`removeXFromY` / `moveXToY` affect only manual links.** An FK-derived link regenerates from the entity's foreign key on the next read; to unlink, change the entity's FK in your own store (the FK is the source of truth).
+- **A `'many'` side gets no composite set-lookup** (kept off to bound the generated surface).
+- **`ordered` on a relationship side is reserved** and currently a no-op (arrays already keep insertion order).
+- **Coupled to ngrx naming:** the runtime reads the merged store by ngrx's `${collection}EntityMap` convention.
+
+## License
+
+MIT
