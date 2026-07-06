@@ -1,0 +1,138 @@
+import {
+  signalStoreFeature,
+  SignalStoreFeature,
+  SignalStoreFeatureResult,
+  withMethods,
+} from '@ngrx/signals';
+import { EntityId } from '@ngrx/signals/entities';
+import { capitalize, hasId, toIdReader } from './internal-helpers';
+import { EntityOf, IdAccessor, RequiredEntityStore } from './types';
+
+/**
+ * The read-only lookups a transitive relationship generates, both directions, arrays throughout
+ * (a chained walk can reach more than one of either endpoint). Accepts an entity or its id;
+ * returns the endpoint entities or their ids.
+ */
+type TransitiveOutput<
+  FromEntity,
+  FromName extends string,
+  FromId extends EntityId,
+  ToEntity,
+  ToName extends string,
+  ToId extends EntityId,
+> = {
+  state: {};
+  props: {};
+  methods: {
+    [Key in `${ToName}sBy${Capitalize<FromName>}`]: (from: FromEntity) => ToEntity[];
+  } & {
+    [Key in `${ToName}sBy${Capitalize<FromName>}Id`]: (fromId: EntityId) => ToEntity[];
+  } & {
+    [Key in `${ToName}IdsBy${Capitalize<FromName>}`]: (from: FromEntity) => ToId[];
+  } & {
+    [Key in `${ToName}IdsBy${Capitalize<FromName>}Id`]: (fromId: EntityId) => ToId[];
+  } & {
+    [Key in `${FromName}sBy${Capitalize<ToName>}`]: (to: ToEntity) => FromEntity[];
+  } & {
+    [Key in `${FromName}sBy${Capitalize<ToName>}Id`]: (toId: EntityId) => FromEntity[];
+  } & {
+    [Key in `${FromName}IdsBy${Capitalize<ToName>}`]: (to: ToEntity) => FromId[];
+  } & {
+    [Key in `${FromName}IdsBy${Capitalize<ToName>}Id`]: (toId: EntityId) => FromId[];
+  };
+};
+
+/**
+ * Relates two collections that store NO foreign key to each other, by walking through the
+ * intermediary collection(s) that link them — a "grandparent" lookup (e.g. a library's books
+ * via its shelves). Composes the adjacency maps that {@link withEntityRelationship} already put
+ * on the store (e.g. `libraryShelfMap` ∘ `shelfBookMap`), so it holds no state, no foreign key,
+ * and no mutations — it purely reads.
+ *
+ * Place AFTER the direct relationships for every hop on the path (they provide the maps this
+ * walks). Lookups return arrays both directions (a walk can fan out to more than one endpoint)
+ * and are deduped. Only the two endpoint entity maps are type-checked as present; that the
+ * intermediate hop maps exist is your responsibility (register each hop's direct relationship).
+ *
+ * @param config the endpoints, the path between them, and how to read each endpoint's id
+ * @param config.from  the starting collection name; the entity type is inferred from the store
+ * @param config.to    the destination collection name; the entity type is inferred from the store
+ * @param config.through the intermediary between them — a single name (`'shelf'`) or an ordered list (`['aisle', 'shelf']`) for 3rd/4th-degree links
+ * @param config.selectFromId how to read a `from` entity's id (default the `'id'` property; match the collection's `selectId`)
+ * @param config.selectToId   how to read a `to` entity's id (default the `'id'` property; match the collection's `selectId`)
+ *
+ * @example
+ * signalStore(
+ *   withEntities(libraryConfig), withEntities(shelfConfig), withEntities(bookConfig),
+ *   withEntityRelationship({ name: 'library', count: 1 }, { name: 'shelf', count: 'many' }),
+ *   withEntityRelationship({ name: 'shelf', count: 1 }, { name: 'book', count: 'many' }),
+ *   withTransitiveRelationship({ from: 'library', to: 'book', through: 'shelf' }),
+ * );
+ * // booksByLibrary(library) / booksByLibraryId(id) -> Book[]     (also bookIdsByLibrary / ...Id -> id[])
+ * // librariesByBook(book) / librariesByBookId(id) -> Library[]   (also libraryIdsByBook / ...Id -> id[])
+ */
+export const withTransitiveRelationship = <
+  FromName extends string,
+  ToName extends string,
+  Store extends SignalStoreFeatureResult & RequiredEntityStore<FromName, ToName>,
+  FromId extends EntityId = EntityId,
+  ToId extends EntityId = EntityId,
+>(config: {
+  from: FromName;
+  to: ToName;
+  through: string | string[];
+  selectFromId?: IdAccessor<FromId>;
+  selectToId?: IdAccessor<ToId>;
+}): SignalStoreFeature<
+  Store,
+  TransitiveOutput<EntityOf<Store, FromName>, FromName, FromId, EntityOf<Store, ToName>, ToName, ToId>
+> => {
+  const { from, to, through } = config;
+  const path = [from, ...(Array.isArray(through) ? through : [through]), to];
+  // Adjacency map keys along the path, forward (from→to) and reverse (to→from).
+  const forwardMapKeys = path.slice(0, -1).map((hop, index) => `${hop}${capitalize(path[index + 1])}Map`);
+  const reverseMapKeys = path.slice(1).map((hop, index) => `${hop}${capitalize(path[index])}Map`).reverse();
+  const fromEntityMapKey = `${from}EntityMap`;
+  const toEntityMapKey = `${to}EntityMap`;
+  const readFromId = toIdReader(config.selectFromId, 'id');
+  const readToId = toIdReader(config.selectToId, 'id');
+  const fromCap = capitalize(from);
+  const toCap = capitalize(to);
+
+  const feature = signalStoreFeature(
+    withMethods((innerStore: any) => {
+      // Walk the chain of adjacency maps, flattening + deduping ids hop by hop.
+      const walk = (startId: EntityId | undefined, mapKeys: string[]): EntityId[] =>
+        hasId(startId)
+          ? mapKeys.reduce<EntityId[]>((ids, mapKey) => {
+              const map = innerStore[mapKey]() as Record<EntityId, EntityId[]>;
+
+              return Array.from(new Set(ids.flatMap((id) => map[id] ?? [])));
+            }, [startId])
+          : [];
+      const resolve = (ids: EntityId[], entityMapKey: string): unknown[] =>
+        ids.map((id) => innerStore[entityMapKey]()[id]).filter((entity: unknown) => entity !== undefined);
+
+      const toIdsByFrom = (fromId: EntityId | undefined): EntityId[] => walk(fromId, forwardMapKeys);
+      const fromIdsByTo = (toId: EntityId | undefined): EntityId[] => walk(toId, reverseMapKeys);
+
+      const methods: Record<string, (...args: any[]) => unknown> = {
+        [`${to}sBy${fromCap}`]: (fromEntity: any) => resolve(toIdsByFrom(readFromId(fromEntity)), toEntityMapKey),
+        [`${to}sBy${fromCap}Id`]: (fromId: EntityId) => resolve(toIdsByFrom(fromId), toEntityMapKey),
+        [`${to}IdsBy${fromCap}`]: (fromEntity: any) => toIdsByFrom(readFromId(fromEntity)),
+        [`${to}IdsBy${fromCap}Id`]: (fromId: EntityId) => toIdsByFrom(fromId),
+        [`${from}sBy${toCap}`]: (toEntity: any) => resolve(fromIdsByTo(readToId(toEntity)), fromEntityMapKey),
+        [`${from}sBy${toCap}Id`]: (toId: EntityId) => resolve(fromIdsByTo(toId), fromEntityMapKey),
+        [`${from}IdsBy${toCap}`]: (toEntity: any) => fromIdsByTo(readToId(toEntity)),
+        [`${from}IdsBy${toCap}Id`]: (toId: EntityId) => fromIdsByTo(toId),
+      };
+
+      return methods;
+    }),
+  );
+
+  return feature as unknown as SignalStoreFeature<
+    Store,
+    TransitiveOutput<EntityOf<Store, FromName>, FromName, FromId, EntityOf<Store, ToName>, ToName, ToId>
+  >;
+};
