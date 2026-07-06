@@ -101,4 +101,17 @@ describe('withTransitiveRelationship', () => {
     expect(store.commentsByAuthorId('nope')).toEqual([]);
     expect(store.authorsByCommentId('nope')).toEqual([]);
   });
+
+  it('throws a clear error when a hop map is missing', () => {
+    const BrokenStore = signalStore(
+      { providedIn: 'root' },
+      withEntityAccessors(authorConfig),
+      withEntityAccessors(commentConfig),
+      // No direct author→post / post→comment relationships registered.
+      withTransitiveRelationship({ from: 'author', to: 'comment', through: 'post' }),
+    );
+    const broken = TestBed.inject(BrokenStore);
+
+    expect(() => broken.commentsByAuthorId('a1')).toThrowError(/authorPostMap.*author → post → comment/s);
+  });
 });

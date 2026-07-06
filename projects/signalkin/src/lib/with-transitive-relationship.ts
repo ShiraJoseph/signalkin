@@ -105,6 +105,12 @@ export const withTransitiveRelationship = <
       const walk = (startId: EntityId | undefined, mapKeys: string[]): EntityId[] =>
         hasId(startId)
           ? mapKeys.reduce<EntityId[]>((ids, mapKey) => {
+              if (typeof innerStore[mapKey] !== 'function') {
+                throw new Error(
+                  `signalkin: '${mapKey}' is not on the store — a transitive relationship needs the direct ` +
+                    `withEntityRelationship for every hop on its path registered before it (path: ${path.join(' → ')}).`,
+                );
+              }
               const map = innerStore[mapKey]() as Record<EntityId, EntityId[]>;
 
               return Array.from(new Set(ids.flatMap((id) => map[id] ?? [])));
