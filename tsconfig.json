@@ -11,6 +11,9 @@
     "isolatedModules": true,
     "experimentalDecorators": true,
     "importHelpers": true,
+    "paths": {
+      "signalkin": ["./dist/signalkin"]
+    },
     "target": "ES2022",
     "module": "preserve"
   },
@@ -19,5 +22,19 @@
     "strictInjectionParameters": true,
     "strictInputAccessModifiers": true
   },
-  "files": []
+  "files": [],
+  "references": [
+    {
+      "path": "./projects/signalkin/tsconfig.lib.json"
+    },
+    {
+      "path": "./projects/signalkin/tsconfig.spec.json"
+    },
+    {
+      "path": "./projects/sandbox/tsconfig.app.json"
+    },
+    {
+      "path": "./projects/sandbox/tsconfig.spec.json"
+    }
+  ]
 }
