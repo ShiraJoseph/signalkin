@@ -117,7 +117,7 @@ Register the direct relationship for every hop BEFORE the transitive one. The tw
 
 ## Known limitations
 
-- **Naive pluralization:** generated names append `s` (`book` → `books`). Irregular nouns come out as e.g. `librarys` — pick collection names with regular plurals for now. Planned: a way to supply a custom plural per collection (`entity` → `entities`).
+- **Default pluralization is naive `+s`** (`book` → `books`, but `library` → `librarys`). Give an irregular noun its real plural where it's used: `plural` on an accessors config (`{ ...libraryConfig, plural: 'libraries' }`) or a relationship side (`{ name: 'library', count: 'many', plural: 'libraries' }`), and `fromPlural` / `toPlural` on a transitive config. It flows through every generated member, type-level and runtime.
 - **`removeXFromY` / `moveXToY` affect only manual links.** An FK-derived link regenerates from the entity's foreign key on the next read; to unlink, change the entity's FK in your own store (the FK is the source of truth).
 - **A `'many'` side gets no composite set-lookup** (kept off to bound the generated surface).
 - **`ordered` on a relationship side is reserved** and currently a no-op (arrays already keep insertion order).

@@ -65,6 +65,26 @@ describe('withEntityAccessors', () => {
     expect(allStore.libraryCount()).toBe(1);
   });
 
+  it('uses a custom plural from a passed config in every pluralized member', () => {
+    const PluralStore = signalStore(
+      { providedIn: 'root' },
+      withEntities(libraryConfig),
+      withEntityAccessors({ ...libraryConfig, plural: 'libraries' }),
+    );
+    const pluralStore = TestBed.inject(PluralStore);
+
+    pluralStore.setAllLibraries([{ id: 'l1', name: 'Central' }]);
+    expect(pluralStore.libraries()).toEqual([{ id: 'l1', name: 'Central' }]);
+    pluralStore.addLibraries([{ id: 'l2', name: 'Eastside' }]);
+    expect(pluralStore.libraryCount()).toBe(2);
+    pluralStore.updateAllLibraries({ name: 'Renamed' });
+    expect(pluralStore.libraries().every((library) => library.name === 'Renamed')).toBe(true);
+    pluralStore.removeAllLibraries();
+    expect(pluralStore.libraryCount()).toBe(0);
+    expect((pluralStore as any).librarys).toBeUndefined();
+    expect((pluralStore as any).setAllLibrarys).toBeUndefined();
+  });
+
   it('covers only the passed configs’ collections when configs are given', () => {
     const onlyBooks = TestBed.inject(OnlyBooksStore);
     onlyBooks.addBook(dune);

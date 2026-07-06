@@ -36,6 +36,12 @@ export const typecheckProbe = (): void => {
   assertType<Book | undefined>(store.bookById('b1'));
   assertType<boolean>(store.hasBook('b1'));
   assertType<LibrarySystem[]>(store.librarySystems());
+
+  // Custom plurals flow through generated names, type-level, from the packaged build.
+  assertType<Library[]>(store.libraries());
+  store.setAllLibraries([central]);
+  assertType<Library[]>(store.librariesByLibrarySystem(citywide));
+  assertType<Library[]>(store.librariesByLibrarySystemId('s1'));
   store.addBook(dune);
   store.addBooks([dune]);
   store.prependBook(dune);

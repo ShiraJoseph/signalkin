@@ -14,13 +14,10 @@ export type Related<Entity, Count extends Cardinality> = IsSingle<Count> extends
   ? Entity | undefined
   : Entity[];
 
-// TODO: support custom pluralization — a way for a caller to supply the plural form per
-// collection (e.g. `entity` → `entities`, not `entitys`) that flows through every generated
-// name, type-level and runtime.
-/** Leading noun of a generated key: the bare name for a 1-side, pluralized (`+s`) for a many-side. */
-export type Lead<Name extends string, Count extends Cardinality> = IsSingle<Count> extends true
+/** Leading noun of a generated key: the bare name for a 1-side, the (given or default `+s`) plural for a many-side. */
+export type Lead<Name extends string, Plural extends string, Count extends Cardinality> = IsSingle<Count> extends true
   ? Name
-  : `${Name}s`;
+  : Plural;
 
 /** The id-returning noun for a side: `${Name}Id` for a 1-side, `${Name}Ids` for a many/number-side. */
 export type IdLead<Name extends string, Count extends Cardinality> = IsSingle<Count> extends true
@@ -82,6 +79,8 @@ export type RelationshipSide<Name extends string, Count extends Cardinality> = {
   name: Name;
   /** How many of this side relate to a single entity of the other side. */
   count: Count;
+  /** The plural of `name`, used in every generated member that pluralizes it. Default: `` `${name}s` ``. */
+  plural?: string;
   /** How to read THIS entity's own id; keep it matching the collection's `selectId`. Default: the `'id'` property. */
   selectPrimaryId?: IdAccessor;
   /**

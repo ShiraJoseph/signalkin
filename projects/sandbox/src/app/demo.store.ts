@@ -28,8 +28,11 @@ export const DemoStore = signalStore(
   withEntities(librarySystemConfig),
   withEntities(libraryConfig),
   withEntities(bookConfig),
-  withEntityAccessors(),
-  withEntityRelationship({ name: 'librarySystem', count: 1 }, { name: 'library', count: 'many' }),
+  withEntityAccessors(librarySystemConfig, { ...libraryConfig, plural: 'libraries' }, bookConfig),
+  withEntityRelationship(
+    { name: 'librarySystem', count: 1 },
+    { name: 'library', count: 'many', plural: 'libraries' },
+  ),
   withEntityRelationship({ name: 'library', count: 1 }, { name: 'book', count: 'many' }),
   withTransitiveRelationship({ from: 'librarySystem', to: 'book', through: 'library' }),
 );

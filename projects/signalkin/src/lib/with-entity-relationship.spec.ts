@@ -28,7 +28,7 @@ const LibraryStore = signalStore(
   { providedIn: 'root' },
   withEntities(libraryConfig),
   withEntities(bookConfig),
-  withEntityAccessors(),
+  withEntityAccessors({ ...libraryConfig, plural: 'libraries' }, bookConfig),
   withEntityRelationship({ name: 'library', count: 1 }, { name: 'book', count: 'many' }),
 );
 
@@ -36,7 +36,7 @@ const ManualStore = signalStore(
   { providedIn: 'root' },
   withEntities(libraryConfig),
   withEntities(bookConfig),
-  withEntityAccessors(),
+  withEntityAccessors({ ...libraryConfig, plural: 'libraries' }, bookConfig),
   withEntityRelationship({ name: 'library', count: 1 }, { name: 'book', count: 'many' }, { autoIndex: false }),
 );
 
@@ -61,7 +61,7 @@ describe('withEntityRelationship', () => {
 
     beforeEach(() => {
       store = TestBed.inject(LibraryStore);
-      store.setAllLibrarys([central, eastside]);
+      store.setAllLibraries([central, eastside]);
       store.setAllBooks([dune, hobbit, emma, strayBook]);
     });
 
@@ -117,7 +117,7 @@ describe('withEntityRelationship', () => {
   describe('autoIndex: false', () => {
     it('ignores foreign keys and only follows manual links', () => {
       const store = TestBed.inject(ManualStore);
-      store.setAllLibrarys([central]);
+      store.setAllLibraries([central]);
       store.setAllBooks([dune]);
 
       expect(store.booksByLibraryId('l1')).toEqual([]);

@@ -36,12 +36,21 @@ const CatalogStore = signalStore(
   withEntities(libraryConfig),
   withEntities(rowConfig),
   withEntities(bookConfig),
-  withEntityAccessors(),
-  withEntityRelationship({ name: 'librarySystem', count: 1 }, { name: 'library', count: 'many' }),
+  withEntityAccessors(
+    librarySystemConfig,
+    { ...libraryConfig, plural: 'libraries' },
+    rowConfig,
+    bookConfig,
+  ),
+  withEntityRelationship(
+    { name: 'librarySystem', count: 1 },
+    { name: 'library', count: 'many', plural: 'libraries' },
+  ),
   withEntityRelationship({ name: 'library', count: 1 }, { name: 'row', count: 'many' }),
   withEntityRelationship({ name: 'row', count: 1 }, { name: 'book', count: 'many' }),
   withTransitiveRelationship({ from: 'librarySystem', to: 'row', through: 'library' }),
   withTransitiveRelationship({ from: 'librarySystem', to: 'book', through: ['library', 'row'] }),
+  withTransitiveRelationship({ from: 'library', to: 'book', through: 'row', fromPlural: 'libraries' }),
 );
 
 const cityWide: LibrarySystem = { id: 's1', name: 'City-Wide' };
@@ -67,7 +76,7 @@ describe('withTransitiveRelationship', () => {
   beforeEach(() => {
     store = TestBed.inject(CatalogStore);
     store.setAllLibrarySystems([cityWide, county]);
-    store.setAllLibrarys(libraries);
+    store.setAllLibraries(libraries);
     store.setAllRows(rows);
     store.setAllBooks(books);
   });
@@ -84,6 +93,15 @@ describe('withTransitiveRelationship', () => {
   it('walks multiple intermediaries (through as an array)', () => {
     expect(store.booksByLibrarySystem(cityWide)).toEqual(books);
     expect(store.librarySystemsByBookId('b1')).toEqual([cityWide]);
+  });
+
+  it('uses custom plurals in generated names (fromPlural / relationship plural)', () => {
+    // Transitive library→book with fromPlural 'libraries'.
+    expect(store.librariesByBookId('b1')).toEqual([libraries[0]]);
+    expect(store.booksByLibrary(libraries[0])).toEqual([books[0]]);
+    // Direct librarySystem→library with the library side's plural.
+    expect(store.librariesByLibrarySystemId('s1')).toEqual([libraries[0], libraries[1]]);
+    expect((store as any).librarysByLibrarySystemId).toBeUndefined();
   });
 
   it('reflects entity changes reactively', () => {

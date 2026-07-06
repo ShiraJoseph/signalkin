@@ -31,20 +31,30 @@ import {
 import { capitalize } from './internal-helpers';
 import { CollectionNames, EntityOf, EntityPredicate, RequiredEntityMaps } from './types';
 
-/** What withEntityAccessors needs from a config: the collection name, and its `selectId` if not the `id` property. An `entityConfig(...)` result works as-is. */
+/** What withEntityAccessors needs from a config: the collection name, its `selectId` if not the `id` property, and its `plural` if not `+s`. An `entityConfig(...)` result works as-is. */
 export type EntityAccessorConfig = {
   entity?: unknown;
   collection: string;
   selectId?: SelectEntityId<any>;
+  plural?: string;
 };
 
 /** The collections a call targets: the passed configs' collections, or EVERY collection on the store when none are passed. */
 type TargetNames<Store extends SignalStoreFeatureResult, Configs extends readonly EntityAccessorConfig[]> =
   Configs extends readonly [] ? CollectionNames<Store['state']> : Configs[number]['collection'];
 
+/** A collection's plural, from its passed config if one names it, else `+s`. */
+type PluralOf<Configs extends readonly EntityAccessorConfig[], Name extends string> = [
+  Extract<Configs[number], { collection: Name }>,
+] extends [never]
+  ? `${Name}s`
+  : Extract<Configs[number], { collection: Name }> extends { plural: infer Plural extends string }
+    ? Plural
+    : `${Name}s`;
+
 /** Convenience signals added alongside ngrx's own `${collection}EntityMap` / `${collection}Ids` / `${collection}Entities`. */
-type EntityAccessorProps<Store, Names extends string> = {
-  [Name in Names as `${Name}s`]: Signal<EntityOf<Store, Name>[]>;
+type EntityAccessorProps<Store, Configs extends readonly EntityAccessorConfig[], Names extends string> = {
+  [Name in Names as PluralOf<Configs, Name>]: Signal<EntityOf<Store, Name>[]>;
 } & {
   [Name in Names as `${Name}Map`]: Signal<EntityMap<EntityOf<Store, Name>>>;
 } & {
@@ -52,51 +62,53 @@ type EntityAccessorProps<Store, Names extends string> = {
 };
 
 /** The standard collection methods, one per ngrx updater plus lookups, named by collection. */
-type EntityAccessorMethods<Store, Names extends string> = {
+type EntityAccessorMethods<Store, Configs extends readonly EntityAccessorConfig[], Names extends string> = {
   [Name in Names as `add${Capitalize<Name>}`]: (entity: EntityOf<Store, Name>) => void;
 } & {
-  [Name in Names as `add${Capitalize<Name>}s`]: (entities: EntityOf<Store, Name>[]) => void;
+  [Name in Names as `add${Capitalize<PluralOf<Configs, Name>>}`]: (entities: EntityOf<Store, Name>[]) => void;
 } & {
   [Name in Names as `prepend${Capitalize<Name>}`]: (entity: EntityOf<Store, Name>) => void;
 } & {
-  [Name in Names as `prepend${Capitalize<Name>}s`]: (entities: EntityOf<Store, Name>[]) => void;
+  [Name in Names as `prepend${Capitalize<PluralOf<Configs, Name>>}`]: (entities: EntityOf<Store, Name>[]) => void;
 } & {
   [Name in Names as `set${Capitalize<Name>}`]: (entity: EntityOf<Store, Name>) => void;
 } & {
-  [Name in Names as `set${Capitalize<Name>}s`]: (entities: EntityOf<Store, Name>[]) => void;
+  [Name in Names as `set${Capitalize<PluralOf<Configs, Name>>}`]: (entities: EntityOf<Store, Name>[]) => void;
 } & {
-  [Name in Names as `setAll${Capitalize<Name>}s`]: (entities: EntityOf<Store, Name>[]) => void;
+  [Name in Names as `setAll${Capitalize<PluralOf<Configs, Name>>}`]: (entities: EntityOf<Store, Name>[]) => void;
 } & {
   [Name in Names as `upsert${Capitalize<Name>}`]: (entity: EntityOf<Store, Name>) => void;
 } & {
-  [Name in Names as `upsert${Capitalize<Name>}s`]: (entities: EntityOf<Store, Name>[]) => void;
+  [Name in Names as `upsert${Capitalize<PluralOf<Configs, Name>>}`]: (entities: EntityOf<Store, Name>[]) => void;
 } & {
   [Name in Names as `update${Capitalize<Name>}`]: (id: EntityId, changes: EntityChanges<EntityOf<Store, Name>>) => void;
 } & {
-  [Name in Names as `update${Capitalize<Name>}s`]: (
+  [Name in Names as `update${Capitalize<PluralOf<Configs, Name>>}`]: (
     idsOrPredicate: EntityId[] | EntityPredicate<EntityOf<Store, Name>>,
     changes: EntityChanges<EntityOf<Store, Name>>,
   ) => void;
 } & {
-  [Name in Names as `updateAll${Capitalize<Name>}s`]: (changes: EntityChanges<EntityOf<Store, Name>>) => void;
+  [Name in Names as `updateAll${Capitalize<PluralOf<Configs, Name>>}`]: (
+    changes: EntityChanges<EntityOf<Store, Name>>,
+  ) => void;
 } & {
   [Name in Names as `remove${Capitalize<Name>}`]: (id: EntityId) => void;
 } & {
-  [Name in Names as `remove${Capitalize<Name>}s`]: (
+  [Name in Names as `remove${Capitalize<PluralOf<Configs, Name>>}`]: (
     idsOrPredicate: EntityId[] | EntityPredicate<EntityOf<Store, Name>>,
   ) => void;
 } & {
-  [Name in Names as `removeAll${Capitalize<Name>}s`]: () => void;
+  [Name in Names as `removeAll${Capitalize<PluralOf<Configs, Name>>}`]: () => void;
 } & {
   [Name in Names as `${Name}ById`]: (id: EntityId) => EntityOf<Store, Name> | undefined;
 } & {
   [Name in Names as `has${Capitalize<Name>}`]: (id: EntityId) => boolean;
 };
 
-type EntityAccessorsOutput<Store, Names extends string> = {
+type EntityAccessorsOutput<Store, Configs extends readonly EntityAccessorConfig[], Names extends string> = {
   state: {};
-  props: EntityAccessorProps<Store, Names>;
-  methods: EntityAccessorMethods<Store, Names>;
+  props: EntityAccessorProps<Store, Configs, Names>;
+  methods: EntityAccessorMethods<Store, Configs, Names>;
 };
 
 /**
@@ -108,7 +120,9 @@ type EntityAccessorsOutput<Store, Names extends string> = {
  * With no arguments it covers EVERY collection on the store. Pass configs to cover only those
  * collections — also how a custom `selectId` gets honored, since ngrx doesn't expose it from
  * `withEntities` (an `entityConfig(...)` result works as-is; a collection without a config
- * defaults to the `id` property).
+ * defaults to the `id` property). A config may also name the collection's `plural`
+ * (`{ ...libraryConfig, plural: 'libraries' }`) to replace the default `+s` in every
+ * pluralized member (`libraries()`, `setAllLibraries`, ...).
  *
  * @param configs none for all collections, or the configs of the collections to cover
  *
@@ -141,7 +155,7 @@ export const withEntityAccessors = <
   Store extends SignalStoreFeatureResult & RequiredEntityMaps<Configs[number]['collection']>,
 >(
   ...configs: Configs
-): SignalStoreFeature<Store, EntityAccessorsOutput<Store, TargetNames<Store, Configs> & string>> => {
+): SignalStoreFeature<Store, EntityAccessorsOutput<Store, Configs, TargetNames<Store, Configs> & string>> => {
   const resolveCollections = (innerStore: any): string[] =>
     configs.length > 0
       ? configs.map((config) => {
@@ -160,12 +174,15 @@ export const withEntityAccessors = <
   const selectIdFor = (collection: string): SelectEntityId<any> | undefined =>
     configs.find((config) => config.collection === collection)?.selectId;
 
+  const pluralFor = (collection: string): string =>
+    configs.find((config) => config.collection === collection)?.plural ?? `${collection}s`;
+
   const feature = signalStoreFeature(
     withComputed((innerStore: any) => {
       const props: Record<string, Signal<unknown>> = {};
 
       resolveCollections(innerStore).forEach((collection) => {
-        props[`${collection}s`] = computed(() => innerStore[`${collection}Entities`]());
+        props[pluralFor(collection)] = computed(() => innerStore[`${collection}Entities`]());
         props[`${collection}Map`] = computed(() => innerStore[`${collection}EntityMap`]());
         props[`${collection}Count`] = computed(() => innerStore[`${collection}Ids`]().length);
       });
@@ -177,24 +194,27 @@ export const withEntityAccessors = <
 
       resolveCollections(innerStore).forEach((collection) => {
         const cap = capitalize(collection);
+        const pluralCap = capitalize(pluralFor(collection));
         const entityMapKey = `${collection}EntityMap`;
         const updaterConfig = { collection, selectId: selectIdFor(collection) } as any;
 
         methods[`add${cap}`] = (entity: unknown) => patchState(innerStore, addEntity(entity, updaterConfig));
-        methods[`add${cap}s`] = (entities: unknown[]) => patchState(innerStore, addEntities(entities, updaterConfig));
+        methods[`add${pluralCap}`] = (entities: unknown[]) =>
+          patchState(innerStore, addEntities(entities, updaterConfig));
         methods[`prepend${cap}`] = (entity: unknown) => patchState(innerStore, prependEntity(entity, updaterConfig));
-        methods[`prepend${cap}s`] = (entities: unknown[]) =>
+        methods[`prepend${pluralCap}`] = (entities: unknown[]) =>
           patchState(innerStore, prependEntities(entities, updaterConfig));
         methods[`set${cap}`] = (entity: unknown) => patchState(innerStore, setEntity(entity, updaterConfig));
-        methods[`set${cap}s`] = (entities: unknown[]) => patchState(innerStore, setEntities(entities, updaterConfig));
-        methods[`setAll${cap}s`] = (entities: unknown[]) =>
+        methods[`set${pluralCap}`] = (entities: unknown[]) =>
+          patchState(innerStore, setEntities(entities, updaterConfig));
+        methods[`setAll${pluralCap}`] = (entities: unknown[]) =>
           patchState(innerStore, setAllEntities(entities, updaterConfig));
         methods[`upsert${cap}`] = (entity: unknown) => patchState(innerStore, upsertEntity(entity, updaterConfig));
-        methods[`upsert${cap}s`] = (entities: unknown[]) =>
+        methods[`upsert${pluralCap}`] = (entities: unknown[]) =>
           patchState(innerStore, upsertEntities(entities, updaterConfig));
         methods[`update${cap}`] = (id: EntityId, changes: unknown) =>
           patchState(innerStore, updateEntity({ id, changes } as any, updaterConfig));
-        methods[`update${cap}s`] = (idsOrPredicate: EntityId[] | EntityPredicate<unknown>, changes: unknown) =>
+        methods[`update${pluralCap}`] = (idsOrPredicate: EntityId[] | EntityPredicate<unknown>, changes: unknown) =>
           patchState(
             innerStore,
             updateEntities(
@@ -204,12 +224,12 @@ export const withEntityAccessors = <
               updaterConfig,
             ),
           );
-        methods[`updateAll${cap}s`] = (changes: unknown) =>
+        methods[`updateAll${pluralCap}`] = (changes: unknown) =>
           patchState(innerStore, updateAllEntities(changes as any, updaterConfig));
         methods[`remove${cap}`] = (id: EntityId) => patchState(innerStore, removeEntity(id, updaterConfig));
-        methods[`remove${cap}s`] = (idsOrPredicate: EntityId[] | EntityPredicate<unknown>) =>
+        methods[`remove${pluralCap}`] = (idsOrPredicate: EntityId[] | EntityPredicate<unknown>) =>
           patchState(innerStore, removeEntities(idsOrPredicate as any, updaterConfig));
-        methods[`removeAll${cap}s`] = () => patchState(innerStore, removeAllEntities(updaterConfig));
+        methods[`removeAll${pluralCap}`] = () => patchState(innerStore, removeAllEntities(updaterConfig));
         methods[`${collection}ById`] = (id: EntityId) => innerStore[entityMapKey]()[id];
         methods[`has${cap}`] = (id: EntityId) => innerStore[entityMapKey]()[id] !== undefined;
       });
@@ -220,6 +240,6 @@ export const withEntityAccessors = <
 
   return feature as unknown as SignalStoreFeature<
     Store,
-    EntityAccessorsOutput<Store, TargetNames<Store, Configs> & string>
+    EntityAccessorsOutput<Store, Configs, TargetNames<Store, Configs> & string>
   >;
 };

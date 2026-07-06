@@ -16,25 +16,27 @@ import { EntityOf, IdAccessor, RequiredEntityStore } from './types';
 type TransitiveOutput<
   FromEntity,
   FromName extends string,
+  FromPlural extends string,
   FromId extends EntityId,
   ToEntity,
   ToName extends string,
+  ToPlural extends string,
   ToId extends EntityId,
 > = {
   state: {};
   props: {};
   methods: {
-    [Key in `${ToName}sBy${Capitalize<FromName>}`]: (from: FromEntity) => ToEntity[];
+    [Key in `${ToPlural}By${Capitalize<FromName>}`]: (from: FromEntity) => ToEntity[];
   } & {
-    [Key in `${ToName}sBy${Capitalize<FromName>}Id`]: (fromId: EntityId) => ToEntity[];
+    [Key in `${ToPlural}By${Capitalize<FromName>}Id`]: (fromId: EntityId) => ToEntity[];
   } & {
     [Key in `${ToName}IdsBy${Capitalize<FromName>}`]: (from: FromEntity) => ToId[];
   } & {
     [Key in `${ToName}IdsBy${Capitalize<FromName>}Id`]: (fromId: EntityId) => ToId[];
   } & {
-    [Key in `${FromName}sBy${Capitalize<ToName>}`]: (to: ToEntity) => FromEntity[];
+    [Key in `${FromPlural}By${Capitalize<ToName>}`]: (to: ToEntity) => FromEntity[];
   } & {
-    [Key in `${FromName}sBy${Capitalize<ToName>}Id`]: (toId: EntityId) => FromEntity[];
+    [Key in `${FromPlural}By${Capitalize<ToName>}Id`]: (toId: EntityId) => FromEntity[];
   } & {
     [Key in `${FromName}IdsBy${Capitalize<ToName>}`]: (to: ToEntity) => FromId[];
   } & {
@@ -58,15 +60,17 @@ type TransitiveOutput<
  * @param config.from  the starting collection name; the entity type is inferred from the store
  * @param config.to    the destination collection name; the entity type is inferred from the store
  * @param config.through the intermediary between them — a single name (`'shelf'`) or an ordered list (`['aisle', 'shelf']`) for 3rd/4th-degree links
+ * @param config.fromPlural the plural of `from`, used in the generated member names (default `` `${from}s` ``)
+ * @param config.toPlural   the plural of `to`, used in the generated member names (default `` `${to}s` ``)
  * @param config.selectFromId how to read a `from` entity's id (default the `'id'` property; match the collection's `selectId`)
  * @param config.selectToId   how to read a `to` entity's id (default the `'id'` property; match the collection's `selectId`)
  *
  * @example
  * signalStore(
  *   withEntities(libraryConfig), withEntities(shelfConfig), withEntities(bookConfig),
- *   withEntityRelationship({ name: 'library', count: 1 }, { name: 'shelf', count: 'many' }),
+ *   withEntityRelationship({ name: 'library', count: 1, plural: 'libraries' }, { name: 'shelf', count: 'many' }),
  *   withEntityRelationship({ name: 'shelf', count: 1 }, { name: 'book', count: 'many' }),
- *   withTransitiveRelationship({ from: 'library', to: 'book', through: 'shelf' }),
+ *   withTransitiveRelationship({ from: 'library', to: 'book', through: 'shelf', fromPlural: 'libraries' }),
  * );
  * // booksByLibrary(library) / booksByLibraryId(id) -> Book[]     (also bookIdsByLibrary / ...Id -> id[])
  * // librariesByBook(book) / librariesByBookId(id) -> Library[]   (also libraryIdsByBook / ...Id -> id[])
@@ -77,17 +81,32 @@ export const withTransitiveRelationship = <
   Store extends SignalStoreFeatureResult & RequiredEntityStore<FromName, ToName>,
   FromId extends EntityId = EntityId,
   ToId extends EntityId = EntityId,
+  FromPlural extends string = `${FromName}s`,
+  ToPlural extends string = `${ToName}s`,
 >(config: {
   from: FromName;
   to: ToName;
   through: string | string[];
+  fromPlural?: FromPlural;
+  toPlural?: ToPlural;
   selectFromId?: IdAccessor<FromId>;
   selectToId?: IdAccessor<ToId>;
 }): SignalStoreFeature<
   Store,
-  TransitiveOutput<EntityOf<Store, FromName>, FromName, FromId, EntityOf<Store, ToName>, ToName, ToId>
+  TransitiveOutput<
+    EntityOf<Store, FromName>,
+    FromName,
+    FromPlural,
+    FromId,
+    EntityOf<Store, ToName>,
+    ToName,
+    ToPlural,
+    ToId
+  >
 > => {
   const { from, to, through } = config;
+  const fromPlural = config.fromPlural ?? `${from}s`;
+  const toPlural = config.toPlural ?? `${to}s`;
   const path = [from, ...(Array.isArray(through) ? through : [through]), to];
   // Adjacency map keys along the path, forward (from→to) and reverse (to→from).
   const forwardMapKeys = path.slice(0, -1).map((hop, index) => `${hop}${capitalize(path[index + 1])}Map`);
@@ -123,12 +142,12 @@ export const withTransitiveRelationship = <
       const fromIdsByTo = (toId: EntityId | undefined): EntityId[] => walk(toId, reverseMapKeys);
 
       const methods: Record<string, (...args: any[]) => unknown> = {
-        [`${to}sBy${fromCap}`]: (fromEntity: any) => resolve(toIdsByFrom(readFromId(fromEntity)), toEntityMapKey),
-        [`${to}sBy${fromCap}Id`]: (fromId: EntityId) => resolve(toIdsByFrom(fromId), toEntityMapKey),
+        [`${toPlural}By${fromCap}`]: (fromEntity: any) => resolve(toIdsByFrom(readFromId(fromEntity)), toEntityMapKey),
+        [`${toPlural}By${fromCap}Id`]: (fromId: EntityId) => resolve(toIdsByFrom(fromId), toEntityMapKey),
         [`${to}IdsBy${fromCap}`]: (fromEntity: any) => toIdsByFrom(readFromId(fromEntity)),
         [`${to}IdsBy${fromCap}Id`]: (fromId: EntityId) => toIdsByFrom(fromId),
-        [`${from}sBy${toCap}`]: (toEntity: any) => resolve(fromIdsByTo(readToId(toEntity)), fromEntityMapKey),
-        [`${from}sBy${toCap}Id`]: (toId: EntityId) => resolve(fromIdsByTo(toId), fromEntityMapKey),
+        [`${fromPlural}By${toCap}`]: (toEntity: any) => resolve(fromIdsByTo(readToId(toEntity)), fromEntityMapKey),
+        [`${fromPlural}By${toCap}Id`]: (toId: EntityId) => resolve(fromIdsByTo(toId), fromEntityMapKey),
         [`${from}IdsBy${toCap}`]: (toEntity: any) => fromIdsByTo(readToId(toEntity)),
         [`${from}IdsBy${toCap}Id`]: (toId: EntityId) => fromIdsByTo(toId),
       };
@@ -139,6 +158,15 @@ export const withTransitiveRelationship = <
 
   return feature as unknown as SignalStoreFeature<
     Store,
-    TransitiveOutput<EntityOf<Store, FromName>, FromName, FromId, EntityOf<Store, ToName>, ToName, ToId>
+    TransitiveOutput<
+      EntityOf<Store, FromName>,
+      FromName,
+      FromPlural,
+      FromId,
+      EntityOf<Store, ToName>,
+      ToName,
+      ToPlural,
+      ToId
+    >
   >;
 };

@@ -43,14 +43,15 @@ type IndexProps<FromName extends string, ToName extends string> = {
 type DirectionalLookup<
   ReturnEntity,
   ReturnName extends string,
+  ReturnPlural extends string,
   ReturnCount extends Cardinality,
   ReturnId extends EntityId,
   InputEntity,
   InputName extends string,
 > = {
-  [Key in `${Lead<ReturnName, ReturnCount>}By${Capitalize<InputName>}`]: (input: InputEntity) => Related<ReturnEntity, ReturnCount>;
+  [Key in `${Lead<ReturnName, ReturnPlural, ReturnCount>}By${Capitalize<InputName>}`]: (input: InputEntity) => Related<ReturnEntity, ReturnCount>;
 } & {
-  [Key in `${Lead<ReturnName, ReturnCount>}By${Capitalize<InputName>}Id`]: (id: EntityId) => Related<ReturnEntity, ReturnCount>;
+  [Key in `${Lead<ReturnName, ReturnPlural, ReturnCount>}By${Capitalize<InputName>}Id`]: (id: EntityId) => Related<ReturnEntity, ReturnCount>;
 } & {
   [Key in `${IdLead<ReturnName, ReturnCount>}By${Capitalize<InputName>}`]: (input: InputEntity) => Related<ReturnId, ReturnCount>;
 } & {
@@ -71,14 +72,16 @@ type HasCountMethods<FromName extends string, ToName extends string> = {
 type LookupMethods<
   FromEntity,
   FromName extends string,
+  FromPlural extends string,
   FromCount extends Cardinality,
   FromId extends EntityId,
   ToEntity,
   ToName extends string,
+  ToPlural extends string,
   ToCount extends Cardinality,
   ToId extends EntityId,
-> = DirectionalLookup<ToEntity, ToName, ToCount, ToId, FromEntity, FromName> &
-  DirectionalLookup<FromEntity, FromName, FromCount, FromId, ToEntity, ToName> &
+> = DirectionalLookup<ToEntity, ToName, ToPlural, ToCount, ToId, FromEntity, FromName> &
+  DirectionalLookup<FromEntity, FromName, FromPlural, FromCount, FromId, ToEntity, ToName> &
   HasCountMethods<FromName, ToName>;
 
 /**
@@ -93,14 +96,15 @@ type CompositeSetLookup<
   ReturnId extends EntityId,
   InputEntity,
   InputName extends string,
+  InputPlural extends string,
   InputCount extends Cardinality,
 > = IsFixedMulti<InputCount> extends true
   ? {
-      [Key in `${ReturnName}By${Capitalize<InputName>}s`]: (...entities: InputEntity[]) => ReturnEntity | undefined;
+      [Key in `${ReturnName}By${Capitalize<InputPlural>}`]: (...entities: InputEntity[]) => ReturnEntity | undefined;
     } & {
       [Key in `${ReturnName}By${Capitalize<InputName>}Ids`]: (...ids: EntityId[]) => ReturnEntity | undefined;
     } & {
-      [Key in `${ReturnName}IdBy${Capitalize<InputName>}s`]: (...entities: InputEntity[]) => ReturnId | undefined;
+      [Key in `${ReturnName}IdBy${Capitalize<InputPlural>}`]: (...entities: InputEntity[]) => ReturnId | undefined;
     } & {
       [Key in `${ReturnName}IdBy${Capitalize<InputName>}Ids`]: (...ids: EntityId[]) => ReturnId | undefined;
     }
@@ -117,18 +121,20 @@ type MutationMethods<FromName extends string, ToName extends string> = {
 type RelationshipOutput<
   FromEntity,
   FromName extends string,
+  FromPlural extends string,
   FromCount extends Cardinality,
   FromId extends EntityId,
   ToEntity,
   ToName extends string,
+  ToPlural extends string,
   ToCount extends Cardinality,
   ToId extends EntityId,
 > = {
   state: LinkState<FromName, ToName>;
   props: IndexProps<FromName, ToName>;
-  methods: LookupMethods<FromEntity, FromName, FromCount, FromId, ToEntity, ToName, ToCount, ToId> &
-    CompositeSetLookup<ToEntity, ToName, ToId, FromEntity, FromName, FromCount> &
-    CompositeSetLookup<FromEntity, FromName, FromId, ToEntity, ToName, ToCount> &
+  methods: LookupMethods<FromEntity, FromName, FromPlural, FromCount, FromId, ToEntity, ToName, ToPlural, ToCount, ToId> &
+    CompositeSetLookup<ToEntity, ToName, ToId, FromEntity, FromName, FromPlural, FromCount> &
+    CompositeSetLookup<FromEntity, FromName, FromId, ToEntity, ToName, ToPlural, ToCount> &
     MutationMethods<FromName, ToName>;
 };
 
@@ -156,7 +162,8 @@ type RelationshipOutput<
  * that links to one of the other defaults to `` `${otherName}Id` `` (scalar); a side that links
  * to more than one defaults to `` `${otherName}Ids` `` (array, e.g. a book's `aisleIds`).
  *
- * @param from one side: `{ name, count, selectPrimaryId?, selectForeignId? }` — entity type inferred from the store by `name`
+ * @param from one side: `{ name, count, plural?, selectPrimaryId?, selectForeignId? }` — entity type inferred from
+ *   the store by `name`; `plural` overrides the default `` `${name}s` `` in every generated member (e.g. `'libraries'`)
  * @param to   the other side, same shape
  * @param options flags — `autoIndex` (default `true`; set `false` for explicit links only)
  *
@@ -187,25 +194,31 @@ export const withEntityRelationship = <
   Store extends SignalStoreFeatureResult & RequiredEntityStore<FromName, ToName>,
   FromId extends EntityId = EntityId,
   ToId extends EntityId = EntityId,
+  FromPlural extends string = `${FromName}s`,
+  ToPlural extends string = `${ToName}s`,
 >(
-  from: { name: FromName; count: FromCount; selectPrimaryId?: IdAccessor<FromId>; selectForeignId?: ForeignIdAccessor; ordered?: boolean },
-  to: { name: ToName; count: ToCount; selectPrimaryId?: IdAccessor<ToId>; selectForeignId?: ForeignIdAccessor; ordered?: boolean },
+  from: { name: FromName; count: FromCount; plural?: FromPlural; selectPrimaryId?: IdAccessor<FromId>; selectForeignId?: ForeignIdAccessor; ordered?: boolean },
+  to: { name: ToName; count: ToCount; plural?: ToPlural; selectPrimaryId?: IdAccessor<ToId>; selectForeignId?: ForeignIdAccessor; ordered?: boolean },
   options?: RelationshipOptions,
 ): SignalStoreFeature<
   Store,
   RelationshipOutput<
     EntityOf<Store, FromName>,
     FromName,
+    FromPlural,
     FromCount,
     FromId,
     EntityOf<Store, ToName>,
     ToName,
+    ToPlural,
     ToCount,
     ToId
   >
 > => {
   const fromName = from.name;
   const toName = to.name;
+  const fromPlural = from.plural ?? `${fromName}s`;
+  const toPlural = to.plural ?? `${toName}s`;
   const fromIsSingle = from.count === 1;
   const toIsSingle = to.count === 1;
 
@@ -320,9 +333,9 @@ export const withEntityRelationship = <
         writeLinks(forward, backward);
       };
 
-      const toEntityLead = toIsSingle ? toName : `${toName}s`;
+      const toEntityLead = toIsSingle ? toName : toPlural;
       const toIdLead = toIsSingle ? `${toName}Id` : `${toName}Ids`;
-      const fromEntityLead = fromIsSingle ? fromName : `${fromName}s`;
+      const fromEntityLead = fromIsSingle ? fromName : fromPlural;
       const fromIdLead = fromIsSingle ? `${fromName}Id` : `${fromName}Ids`;
       const fromCap = capitalize(fromName);
       const toCap = capitalize(toName);
@@ -366,6 +379,7 @@ export const withEntityRelationship = <
       const addSetLookup = (
         returnName: string,
         inputName: string,
+        inputPlural: string,
         sourceMapKey: string,
         returnEntityMapKey: string,
         readInputId: (entity: any) => EntityId | undefined,
@@ -382,18 +396,20 @@ export const withEntityRelationship = <
         const inputCap = capitalize(inputName);
         const idsFromEntities = (entities: any[]): EntityId[] => entities.map(readInputId) as EntityId[];
 
-        methods[`${returnName}By${inputCap}s`] = (...entities: any[]) =>
+        methods[`${returnName}By${capitalize(inputPlural)}`] = (...entities: any[]) =>
           innerStore[returnEntityMapKey]()[lookupId(idsFromEntities(entities)) as EntityId];
         methods[`${returnName}By${inputCap}Ids`] = (...ids: EntityId[]) =>
           innerStore[returnEntityMapKey]()[lookupId(ids) as EntityId];
-        methods[`${returnName}IdBy${inputCap}s`] = (...entities: any[]) => lookupId(idsFromEntities(entities));
+        methods[`${returnName}IdBy${capitalize(inputPlural)}`] = (...entities: any[]) => lookupId(idsFromEntities(entities));
         methods[`${returnName}IdBy${inputCap}Ids`] = (...ids: EntityId[]) => lookupId(ids);
       };
 
       const isFixedMulti = (count: Cardinality): boolean => typeof count === 'number' && count >= 2;
       // Input side = the one whose full id-set is the key; it maps to the single other-side entity.
-      if (isFixedMulti(from.count)) addSetLookup(toName, fromName, reverseMapKey, toEntityMapKey, readFromPrimaryId);
-      if (isFixedMulti(to.count)) addSetLookup(fromName, toName, forwardMapKey, fromEntityMapKey, readToPrimaryId);
+      if (isFixedMulti(from.count))
+        addSetLookup(toName, fromName, fromPlural, reverseMapKey, toEntityMapKey, readFromPrimaryId);
+      if (isFixedMulti(to.count))
+        addSetLookup(fromName, toName, toPlural, forwardMapKey, fromEntityMapKey, readToPrimaryId);
 
       return methods;
     }),
@@ -404,10 +420,12 @@ export const withEntityRelationship = <
     RelationshipOutput<
       EntityOf<Store, FromName>,
       FromName,
+      FromPlural,
       FromCount,
       FromId,
       EntityOf<Store, ToName>,
       ToName,
+      ToPlural,
       ToCount,
       ToId
     >
