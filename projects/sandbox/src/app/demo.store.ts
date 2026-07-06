@@ -1,6 +1,6 @@
 import { signalStore, type } from '@ngrx/signals';
 import { entityConfig, withEntities } from '@ngrx/signals/entities';
-import { withEntityRelationship, withTransitiveRelationship } from 'signalkin';
+import { withEntityAccessors, withEntityRelationship, withTransitiveRelationship } from 'signalkin';
 
 export interface Author {
   id: string;
@@ -25,7 +25,7 @@ const commentConfig = entityConfig({ entity: type<Comment>(), collection: 'comme
 
 export const DemoStore = signalStore(
   { providedIn: 'root' },
-  withEntities(authorConfig),
+  withEntityAccessors(authorConfig),
   withEntities(postConfig),
   withEntities(commentConfig),
   withEntityRelationship({ name: 'author', count: 1 }, { name: 'post', count: 'many' }),

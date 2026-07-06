@@ -48,6 +48,9 @@ export type EntityOf<Store, Name extends string> = Store extends { state: infer 
     : never
   : never;
 
+/** A test an entity either passes or fails — used to pick which entities a bulk update/remove touches. */
+export type EntityPredicate<Entity> = (entity: Entity) => boolean;
+
 /**
  * A property name to read, or a getter that returns an id — mirrors ngrx `selectId`, but a key string
  * also works. A typed getter (e.g. `(entity) => entity.id2`) lets the id type be inferred (branded ids

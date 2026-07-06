@@ -30,6 +30,25 @@ export const typecheckProbe = (): void => {
   assertType<Comment[]>(store.commentsByAuthor(anAuthor));
   assertType<Author[]>(store.authorsByComment(aComment));
 
+  // Entity accessors (the author collection is set up via withEntityAccessors).
+  assertType<Author[]>(store.authors());
+  assertType<Record<string | number, Author>>(store.authorMap());
+  assertType<number>(store.authorCount());
+  assertType<Author | undefined>(store.authorById('a1'));
+  assertType<boolean>(store.hasAuthor('a1'));
+  store.addAuthor(anAuthor);
+  store.addAuthors([anAuthor]);
+  store.prependAuthor(anAuthor);
+  store.setAuthor(anAuthor);
+  store.setAllAuthors([anAuthor]);
+  store.upsertAuthor(anAuthor);
+  store.updateAuthor('a1', { name: 'Ursula K.' });
+  store.updateAuthors(['a1'], (author) => ({ name: `${author.name}!` }));
+  store.updateAllAuthors({ name: 'Everyone' });
+  store.removeAuthor('a1');
+  store.removeAuthors((author) => author.name === '');
+  store.removeAllAuthors();
+
   // Wrong entity type is rejected (a Comment is not an Author).
   // @ts-expect-error
   store.postsByAuthor(aComment);
