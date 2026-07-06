@@ -1,117 +1,121 @@
 import { TestBed } from '@angular/core/testing';
 import { signalStore, type } from '@ngrx/signals';
-import { entityConfig } from '@ngrx/signals/entities';
+import { entityConfig, withEntities } from '@ngrx/signals/entities';
 import { withEntityAccessors } from './with-entity-accessors';
 import { withEntityRelationship } from './with-entity-relationship';
 import { withTransitiveRelationship } from './with-transitive-relationship';
 
-interface Author {
+interface LibrarySystem {
   id: string;
   name: string;
 }
 
-interface Post {
+interface Library {
   id: string;
-  authorId: string;
+  librarySystemId: string;
 }
 
-interface Comment {
+interface Row {
   id: string;
-  postId: string;
+  libraryId: string;
 }
 
-interface Reply {
+interface Book {
   id: string;
-  commentId: string;
+  rowId: string;
 }
 
-const authorConfig = entityConfig({ entity: type<Author>(), collection: 'author' });
-const postConfig = entityConfig({ entity: type<Post>(), collection: 'post' });
-const commentConfig = entityConfig({ entity: type<Comment>(), collection: 'comment' });
-const replyConfig = entityConfig({ entity: type<Reply>(), collection: 'reply' });
+const librarySystemConfig = entityConfig({ entity: type<LibrarySystem>(), collection: 'librarySystem' });
+const libraryConfig = entityConfig({ entity: type<Library>(), collection: 'library' });
+const rowConfig = entityConfig({ entity: type<Row>(), collection: 'row' });
+const bookConfig = entityConfig({ entity: type<Book>(), collection: 'book' });
 
-const BlogStore = signalStore(
+const CatalogStore = signalStore(
   { providedIn: 'root' },
-  withEntityAccessors(authorConfig),
-  withEntityAccessors(postConfig),
-  withEntityAccessors(commentConfig),
-  withEntityAccessors(replyConfig),
-  withEntityRelationship({ name: 'author', count: 1 }, { name: 'post', count: 'many' }),
-  withEntityRelationship({ name: 'post', count: 1 }, { name: 'comment', count: 'many' }),
-  withEntityRelationship({ name: 'comment', count: 1 }, { name: 'reply', count: 'many' }),
-  withTransitiveRelationship({ from: 'author', to: 'comment', through: 'post' }),
-  withTransitiveRelationship({ from: 'author', to: 'reply', through: ['post', 'comment'] }),
+  withEntities(librarySystemConfig),
+  withEntities(libraryConfig),
+  withEntities(rowConfig),
+  withEntities(bookConfig),
+  withEntityAccessors(),
+  withEntityRelationship({ name: 'librarySystem', count: 1 }, { name: 'library', count: 'many' }),
+  withEntityRelationship({ name: 'library', count: 1 }, { name: 'row', count: 'many' }),
+  withEntityRelationship({ name: 'row', count: 1 }, { name: 'book', count: 'many' }),
+  withTransitiveRelationship({ from: 'librarySystem', to: 'row', through: 'library' }),
+  withTransitiveRelationship({ from: 'librarySystem', to: 'book', through: ['library', 'row'] }),
 );
 
-const ursula: Author = { id: 'a1', name: 'Ursula' };
-const octavia: Author = { id: 'a2', name: 'Octavia' };
-const posts: Post[] = [
-  { id: 'p1', authorId: 'a1' },
-  { id: 'p2', authorId: 'a1' },
-  { id: 'p3', authorId: 'a2' },
+const cityWide: LibrarySystem = { id: 's1', name: 'City-Wide' };
+const county: LibrarySystem = { id: 's2', name: 'County' };
+const libraries: Library[] = [
+  { id: 'l1', librarySystemId: 's1' },
+  { id: 'l2', librarySystemId: 's1' },
+  { id: 'l3', librarySystemId: 's2' },
 ];
-const comments: Comment[] = [
-  { id: 'c1', postId: 'p1' },
-  { id: 'c2', postId: 'p2' },
-  { id: 'c3', postId: 'p3' },
+const rows: Row[] = [
+  { id: 'r1', libraryId: 'l1' },
+  { id: 'r2', libraryId: 'l2' },
+  { id: 'r3', libraryId: 'l3' },
 ];
-const replies: Reply[] = [
-  { id: 'r1', commentId: 'c1' },
-  { id: 'r2', commentId: 'c2' },
+const books: Book[] = [
+  { id: 'b1', rowId: 'r1' },
+  { id: 'b2', rowId: 'r2' },
 ];
 
 describe('withTransitiveRelationship', () => {
-  let store: InstanceType<typeof BlogStore>;
+  let store: InstanceType<typeof CatalogStore>;
 
   beforeEach(() => {
-    store = TestBed.inject(BlogStore);
-    store.setAllAuthors([ursula, octavia]);
-    store.setAllPosts(posts);
-    store.setAllComments(comments);
-    store.setAllReplys(replies);
+    store = TestBed.inject(CatalogStore);
+    store.setAllLibrarySystems([cityWide, county]);
+    store.setAllLibrarys(libraries);
+    store.setAllRows(rows);
+    store.setAllBooks(books);
   });
 
   it('walks one intermediary in both directions', () => {
-    expect(store.commentsByAuthor(ursula)).toEqual([comments[0], comments[1]]);
-    expect(store.commentsByAuthorId('a2')).toEqual([comments[2]]);
-    expect(store.commentIdsByAuthorId('a1')).toEqual(['c1', 'c2']);
-    expect(store.authorsByComment(comments[0])).toEqual([ursula]);
-    expect(store.authorsByCommentId('c3')).toEqual([octavia]);
-    expect(store.authorIdsByCommentId('c1')).toEqual(['a1']);
+    expect(store.rowsByLibrarySystem(cityWide)).toEqual([rows[0], rows[1]]);
+    expect(store.rowsByLibrarySystemId('s2')).toEqual([rows[2]]);
+    expect(store.rowIdsByLibrarySystemId('s1')).toEqual(['r1', 'r2']);
+    expect(store.librarySystemsByRow(rows[0])).toEqual([cityWide]);
+    expect(store.librarySystemsByRowId('r3')).toEqual([county]);
+    expect(store.librarySystemIdsByRowId('r1')).toEqual(['s1']);
   });
 
   it('walks multiple intermediaries (through as an array)', () => {
-    expect(store.replysByAuthor(ursula)).toEqual(replies);
-    expect(store.authorsByReplyId('r1')).toEqual([ursula]);
+    expect(store.booksByLibrarySystem(cityWide)).toEqual(books);
+    expect(store.librarySystemsByBookId('b1')).toEqual([cityWide]);
   });
 
   it('reflects entity changes reactively', () => {
-    store.updatePost('p2', { authorId: 'a2' });
-    expect(store.commentIdsByAuthorId('a1')).toEqual(['c1']);
-    expect(store.commentIdsByAuthorId('a2')).toEqual(['c2', 'c3']);
+    store.updateLibrary('l2', { librarySystemId: 's2' });
+    expect(store.rowIdsByLibrarySystemId('s1')).toEqual(['r1']);
+    expect(store.rowIdsByLibrarySystemId('s2')).toEqual(['r2', 'r3']);
   });
 
   it('dedupes when multiple paths reach the same endpoint', () => {
-    store.addCommentToPost('p2', 'c1');
-    const commentIds = store.commentIdsByAuthorId('a1');
-    expect(commentIds.filter((id) => id === 'c1')).toEqual(['c1']);
+    store.addRowToLibrary('l2', 'r1');
+    const rowIds = store.rowIdsByLibrarySystemId('s1');
+    expect(rowIds.filter((id) => id === 'r1')).toEqual(['r1']);
   });
 
   it('returns empty arrays for unknown ids', () => {
-    expect(store.commentsByAuthorId('nope')).toEqual([]);
-    expect(store.authorsByCommentId('nope')).toEqual([]);
+    expect(store.rowsByLibrarySystemId('nope')).toEqual([]);
+    expect(store.librarySystemsByRowId('nope')).toEqual([]);
   });
 
   it('throws a clear error when a hop map is missing', () => {
     const BrokenStore = signalStore(
       { providedIn: 'root' },
-      withEntityAccessors(authorConfig),
-      withEntityAccessors(commentConfig),
-      // No direct author→post / post→comment relationships registered.
-      withTransitiveRelationship({ from: 'author', to: 'comment', through: 'post' }),
+      withEntities(librarySystemConfig),
+      withEntities(rowConfig),
+      withEntityAccessors(),
+      // No direct librarySystem→library / library→row relationships registered.
+      withTransitiveRelationship({ from: 'librarySystem', to: 'row', through: 'library' }),
     );
     const broken = TestBed.inject(BrokenStore);
 
-    expect(() => broken.commentsByAuthorId('a1')).toThrowError(/authorPostMap.*author → post → comment/s);
+    expect(() => broken.rowsByLibrarySystemId('s1')).toThrowError(
+      /librarySystemLibraryMap.*librarySystem → library → row/s,
+    );
   });
 });

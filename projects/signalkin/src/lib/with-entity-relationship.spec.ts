@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { signalStore, type } from '@ngrx/signals';
-import { entityConfig } from '@ngrx/signals/entities';
+import { entityConfig, withEntities } from '@ngrx/signals/entities';
 import { withEntityAccessors } from './with-entity-accessors';
 import { withEntityRelationship } from './with-entity-relationship';
 
@@ -13,36 +13,39 @@ interface Book {
   id: string;
   title: string;
   libraryId?: string;
-  aisleIds?: string[];
+  rowIds?: string[];
 }
 
-interface Aisle {
+interface Row {
   id: string;
 }
 
 const libraryConfig = entityConfig({ entity: type<Library>(), collection: 'library' });
 const bookConfig = entityConfig({ entity: type<Book>(), collection: 'book' });
-const aisleConfig = entityConfig({ entity: type<Aisle>(), collection: 'aisle' });
+const rowConfig = entityConfig({ entity: type<Row>(), collection: 'row' });
 
 const LibraryStore = signalStore(
   { providedIn: 'root' },
-  withEntityAccessors(libraryConfig),
-  withEntityAccessors(bookConfig),
+  withEntities(libraryConfig),
+  withEntities(bookConfig),
+  withEntityAccessors(),
   withEntityRelationship({ name: 'library', count: 1 }, { name: 'book', count: 'many' }),
 );
 
 const ManualStore = signalStore(
   { providedIn: 'root' },
-  withEntityAccessors(libraryConfig),
-  withEntityAccessors(bookConfig),
+  withEntities(libraryConfig),
+  withEntities(bookConfig),
+  withEntityAccessors(),
   withEntityRelationship({ name: 'library', count: 1 }, { name: 'book', count: 'many' }, { autoIndex: false }),
 );
 
-const AisleStore = signalStore(
+const RowStore = signalStore(
   { providedIn: 'root' },
-  withEntityAccessors(aisleConfig),
-  withEntityAccessors(bookConfig),
-  withEntityRelationship({ name: 'aisle', count: 2 }, { name: 'book', count: 'many' }),
+  withEntities(rowConfig),
+  withEntities(bookConfig),
+  withEntityAccessors(),
+  withEntityRelationship({ name: 'row', count: 2 }, { name: 'book', count: 'many' }),
 );
 
 const central: Library = { id: 'l1', name: 'Central' };
@@ -126,18 +129,18 @@ describe('withEntityRelationship', () => {
 
   describe('composite set-lookup (fixed count 2)', () => {
     it('finds the single entity pinned by a full id-set, order-insensitively', () => {
-      const store = TestBed.inject(AisleStore);
-      const aisleA: Aisle = { id: 'a1' };
-      const aisleB: Aisle = { id: 'a2' };
-      const crossShelved: Book = { id: 'b9', title: 'Everywhere', aisleIds: ['a1', 'a2'] };
-      store.setAllAisles([aisleA, aisleB]);
+      const store = TestBed.inject(RowStore);
+      const frontRow: Row = { id: 'r1' };
+      const backRow: Row = { id: 'r2' };
+      const crossShelved: Book = { id: 'b9', title: 'Everywhere', rowIds: ['r1', 'r2'] };
+      store.setAllRows([frontRow, backRow]);
       store.setAllBooks([crossShelved]);
 
-      expect(store.aislesByBook(crossShelved)).toEqual([aisleA, aisleB]);
-      expect(store.bookByAisleIds('a2', 'a1')).toEqual(crossShelved);
-      expect(store.bookByAisles(aisleB, aisleA)).toEqual(crossShelved);
-      expect(store.bookIdByAisleIds('a1', 'a2')).toBe('b9');
-      expect(store.bookByAisleIds('a1')).toBeUndefined();
+      expect(store.rowsByBook(crossShelved)).toEqual([frontRow, backRow]);
+      expect(store.bookByRowIds('r2', 'r1')).toEqual(crossShelved);
+      expect(store.bookByRows(backRow, frontRow)).toEqual(crossShelved);
+      expect(store.bookIdByRowIds('r1', 'r2')).toBe('b9');
+      expect(store.bookByRowIds('r1')).toBeUndefined();
     });
   });
 });

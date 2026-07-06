@@ -4,7 +4,7 @@ Relationships and everyday collection methods for [`@ngrx/signals`](https://ngrx
 
 `@ngrx/signals/entities` gives you normalized collections; signalkin adds what you usually hand-write on top of them:
 
-- **`withEntityAccessors`** — one call that sets up a collection AND its standard methods (add/set/upsert/update/remove families, lookups, counts), all named by collection.
+- **`withEntityAccessors`** — one call, after your `withEntities` list, that adds every collection's standard methods (add/set/upsert/update/remove families, lookups, counts), all named by collection.
 - **`withEntityRelationship`** — relate two collections (1:many, N:many, m:n) with typed lookups in both directions, auto-indexed from foreign keys, plus link mutations.
 - **`withTransitiveRelationship`** — "grandparent" lookups that walk through intermediary collections, composing the direct relationships you already registered.
 
@@ -22,7 +22,7 @@ Peer dependencies: `@angular/core` and `@ngrx/signals` (which provides `@ngrx/si
 
 ```ts
 import { signalStore, type } from '@ngrx/signals';
-import { entityConfig } from '@ngrx/signals/entities';
+import { entityConfig, withEntities } from '@ngrx/signals/entities';
 import { withEntityAccessors, withEntityRelationship, withTransitiveRelationship } from 'signalkin';
 
 interface Library { id: string; name: string; }
@@ -35,9 +35,10 @@ const bookConfig = entityConfig({ entity: type<Book>(), collection: 'book' });
 
 export const CatalogStore = signalStore(
   { providedIn: 'root' },
-  withEntityAccessors(libraryConfig),
-  withEntityAccessors(shelfConfig),
-  withEntityAccessors(bookConfig),
+  withEntities(libraryConfig),
+  withEntities(shelfConfig),
+  withEntities(bookConfig),
+  withEntityAccessors(),
   withEntityRelationship({ name: 'library', count: 1 }, { name: 'shelf', count: 'many' }),
   withEntityRelationship({ name: 'shelf', count: 1 }, { name: 'book', count: 'many' }),
   withTransitiveRelationship({ from: 'library', to: 'book', through: 'shelf' }),
@@ -53,9 +54,17 @@ store.shelfByBook(book);                                     // -> Shelf | undef
 store.booksByLibrary(library);                               // -> Book[]        (walks library → shelf → book)
 ```
 
-## `withEntityAccessors(config)`
+## `withEntityAccessors(...configs)`
 
-Composes `withEntities(config)` itself (so `bookEntityMap()` / `bookIds()` / `bookEntities()` come along) and adds, for `collection: 'book'`:
+One call, placed AFTER your `withEntities` list. With no arguments it covers EVERY collection on the store. Pass configs to cover only those collections — that's also how a custom `selectId` gets honored, since ngrx doesn't expose it from `withEntities` (an `entityConfig(...)` result works as-is; a collection without a config defaults to the `id` property):
+
+```ts
+withEntityAccessors()                       // all collections, ids read from `id`
+withEntityAccessors(bookConfig)             // only book; bookConfig's selectId is honored
+withEntityAccessors(bookConfig, shelfConfig)
+```
+
+Adds, for `collection: 'book'`:
 
 | Kind | Members |
 |---|---|
@@ -108,7 +117,7 @@ Register the direct relationship for every hop BEFORE the transitive one. The tw
 
 ## Known limitations
 
-- **Naive pluralization:** generated names append `s` (`book` → `books`). Irregular nouns come out as e.g. `librarys` — pick collection names with regular plurals.
+- **Naive pluralization:** generated names append `s` (`book` → `books`). Irregular nouns come out as e.g. `librarys` — pick collection names with regular plurals for now. Planned: a way to supply a custom plural per collection (`entity` → `entities`).
 - **`removeXFromY` / `moveXToY` affect only manual links.** An FK-derived link regenerates from the entity's foreign key on the next read; to unlink, change the entity's FK in your own store (the FK is the source of truth).
 - **A `'many'` side gets no composite set-lookup** (kept off to bound the generated surface).
 - **`ordered` on a relationship side is reserved** and currently a no-op (arrays already keep insertion order).

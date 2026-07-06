@@ -3,6 +3,7 @@
  */
 
 export { withEntityAccessors } from './lib/with-entity-accessors';
+export type { EntityAccessorConfig } from './lib/with-entity-accessors';
 export { withEntityRelationship } from './lib/with-entity-relationship';
 export { withTransitiveRelationship } from './lib/with-transitive-relationship';
 export type {

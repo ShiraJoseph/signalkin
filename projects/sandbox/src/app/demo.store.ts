@@ -2,33 +2,34 @@ import { signalStore, type } from '@ngrx/signals';
 import { entityConfig, withEntities } from '@ngrx/signals/entities';
 import { withEntityAccessors, withEntityRelationship, withTransitiveRelationship } from 'signalkin';
 
-export interface Author {
+export interface LibrarySystem {
   id: string;
   name: string;
 }
 
-export interface Post {
+export interface Library {
   id: string;
-  authorId: string;
+  librarySystemId: string;
+  name: string;
+}
+
+export interface Book {
+  id: string;
+  libraryId: string;
   title: string;
 }
 
-export interface Comment {
-  id: string;
-  postId: string;
-  text: string;
-}
-
-const authorConfig = entityConfig({ entity: type<Author>(), collection: 'author' });
-const postConfig = entityConfig({ entity: type<Post>(), collection: 'post' });
-const commentConfig = entityConfig({ entity: type<Comment>(), collection: 'comment' });
+const librarySystemConfig = entityConfig({ entity: type<LibrarySystem>(), collection: 'librarySystem' });
+const libraryConfig = entityConfig({ entity: type<Library>(), collection: 'library' });
+const bookConfig = entityConfig({ entity: type<Book>(), collection: 'book' });
 
 export const DemoStore = signalStore(
   { providedIn: 'root' },
-  withEntityAccessors(authorConfig),
-  withEntities(postConfig),
-  withEntities(commentConfig),
-  withEntityRelationship({ name: 'author', count: 1 }, { name: 'post', count: 'many' }),
-  withEntityRelationship({ name: 'post', count: 1 }, { name: 'comment', count: 'many' }),
-  withTransitiveRelationship({ from: 'author', to: 'comment', through: 'post' }),
+  withEntities(librarySystemConfig),
+  withEntities(libraryConfig),
+  withEntities(bookConfig),
+  withEntityAccessors(),
+  withEntityRelationship({ name: 'librarySystem', count: 1 }, { name: 'library', count: 'many' }),
+  withEntityRelationship({ name: 'library', count: 1 }, { name: 'book', count: 'many' }),
+  withTransitiveRelationship({ from: 'librarySystem', to: 'book', through: 'library' }),
 );

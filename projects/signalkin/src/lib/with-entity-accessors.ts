@@ -1,9 +1,9 @@
 import { computed, Signal } from '@angular/core';
 import {
-  EmptyFeatureResult,
   patchState,
   signalStoreFeature,
   SignalStoreFeature,
+  SignalStoreFeatureResult,
   withComputed,
   withMethods,
 } from '@ngrx/signals';
@@ -13,8 +13,6 @@ import {
   EntityChanges,
   EntityId,
   EntityMap,
-  NamedEntityProps,
-  NamedEntityState,
   prependEntities,
   prependEntity,
   removeAllEntities,
@@ -29,78 +27,97 @@ import {
   updateEntity,
   upsertEntities,
   upsertEntity,
-  withEntities,
 } from '@ngrx/signals/entities';
 import { capitalize } from './internal-helpers';
-import { EntityPredicate } from './types';
+import { CollectionNames, EntityOf, EntityPredicate, RequiredEntityMaps } from './types';
+
+/** What withEntityAccessors needs from a config: the collection name, and its `selectId` if not the `id` property. An `entityConfig(...)` result works as-is. */
+export type EntityAccessorConfig = {
+  entity?: unknown;
+  collection: string;
+  selectId?: SelectEntityId<any>;
+};
+
+/** The collections a call targets: the passed configs' collections, or EVERY collection on the store when none are passed. */
+type TargetNames<Store extends SignalStoreFeatureResult, Configs extends readonly EntityAccessorConfig[]> =
+  Configs extends readonly [] ? CollectionNames<Store['state']> : Configs[number]['collection'];
 
 /** Convenience signals added alongside ngrx's own `${collection}EntityMap` / `${collection}Ids` / `${collection}Entities`. */
-type EntityAccessorProps<Entity, Collection extends string> = {
-  [Key in `${Collection}s`]: Signal<Entity[]>;
+type EntityAccessorProps<Store, Names extends string> = {
+  [Name in Names as `${Name}s`]: Signal<EntityOf<Store, Name>[]>;
 } & {
-  [Key in `${Collection}Map`]: Signal<EntityMap<Entity>>;
+  [Name in Names as `${Name}Map`]: Signal<EntityMap<EntityOf<Store, Name>>>;
 } & {
-  [Key in `${Collection}Count`]: Signal<number>;
+  [Name in Names as `${Name}Count`]: Signal<number>;
 };
 
 /** The standard collection methods, one per ngrx updater plus lookups, named by collection. */
-type EntityAccessorMethods<Entity, Collection extends string> = {
-  [Key in `add${Capitalize<Collection>}`]: (entity: Entity) => void;
+type EntityAccessorMethods<Store, Names extends string> = {
+  [Name in Names as `add${Capitalize<Name>}`]: (entity: EntityOf<Store, Name>) => void;
 } & {
-  [Key in `add${Capitalize<Collection>}s`]: (entities: Entity[]) => void;
+  [Name in Names as `add${Capitalize<Name>}s`]: (entities: EntityOf<Store, Name>[]) => void;
 } & {
-  [Key in `prepend${Capitalize<Collection>}`]: (entity: Entity) => void;
+  [Name in Names as `prepend${Capitalize<Name>}`]: (entity: EntityOf<Store, Name>) => void;
 } & {
-  [Key in `prepend${Capitalize<Collection>}s`]: (entities: Entity[]) => void;
+  [Name in Names as `prepend${Capitalize<Name>}s`]: (entities: EntityOf<Store, Name>[]) => void;
 } & {
-  [Key in `set${Capitalize<Collection>}`]: (entity: Entity) => void;
+  [Name in Names as `set${Capitalize<Name>}`]: (entity: EntityOf<Store, Name>) => void;
 } & {
-  [Key in `set${Capitalize<Collection>}s`]: (entities: Entity[]) => void;
+  [Name in Names as `set${Capitalize<Name>}s`]: (entities: EntityOf<Store, Name>[]) => void;
 } & {
-  [Key in `setAll${Capitalize<Collection>}s`]: (entities: Entity[]) => void;
+  [Name in Names as `setAll${Capitalize<Name>}s`]: (entities: EntityOf<Store, Name>[]) => void;
 } & {
-  [Key in `upsert${Capitalize<Collection>}`]: (entity: Entity) => void;
+  [Name in Names as `upsert${Capitalize<Name>}`]: (entity: EntityOf<Store, Name>) => void;
 } & {
-  [Key in `upsert${Capitalize<Collection>}s`]: (entities: Entity[]) => void;
+  [Name in Names as `upsert${Capitalize<Name>}s`]: (entities: EntityOf<Store, Name>[]) => void;
 } & {
-  [Key in `update${Capitalize<Collection>}`]: (id: EntityId, changes: EntityChanges<Entity>) => void;
+  [Name in Names as `update${Capitalize<Name>}`]: (id: EntityId, changes: EntityChanges<EntityOf<Store, Name>>) => void;
 } & {
-  [Key in `update${Capitalize<Collection>}s`]: (
-    idsOrPredicate: EntityId[] | EntityPredicate<Entity>,
-    changes: EntityChanges<Entity>,
+  [Name in Names as `update${Capitalize<Name>}s`]: (
+    idsOrPredicate: EntityId[] | EntityPredicate<EntityOf<Store, Name>>,
+    changes: EntityChanges<EntityOf<Store, Name>>,
   ) => void;
 } & {
-  [Key in `updateAll${Capitalize<Collection>}s`]: (changes: EntityChanges<Entity>) => void;
+  [Name in Names as `updateAll${Capitalize<Name>}s`]: (changes: EntityChanges<EntityOf<Store, Name>>) => void;
 } & {
-  [Key in `remove${Capitalize<Collection>}`]: (id: EntityId) => void;
+  [Name in Names as `remove${Capitalize<Name>}`]: (id: EntityId) => void;
 } & {
-  [Key in `remove${Capitalize<Collection>}s`]: (idsOrPredicate: EntityId[] | EntityPredicate<Entity>) => void;
+  [Name in Names as `remove${Capitalize<Name>}s`]: (
+    idsOrPredicate: EntityId[] | EntityPredicate<EntityOf<Store, Name>>,
+  ) => void;
 } & {
-  [Key in `removeAll${Capitalize<Collection>}s`]: () => void;
+  [Name in Names as `removeAll${Capitalize<Name>}s`]: () => void;
 } & {
-  [Key in `${Collection}ById`]: (id: EntityId) => Entity | undefined;
+  [Name in Names as `${Name}ById`]: (id: EntityId) => EntityOf<Store, Name> | undefined;
 } & {
-  [Key in `has${Capitalize<Collection>}`]: (id: EntityId) => boolean;
+  [Name in Names as `has${Capitalize<Name>}`]: (id: EntityId) => boolean;
 };
 
-type EntityAccessorsOutput<Entity, Collection extends string> = {
-  state: NamedEntityState<Entity, Collection>;
-  props: NamedEntityProps<Entity, Collection> & EntityAccessorProps<Entity, Collection>;
-  methods: EntityAccessorMethods<Entity, Collection>;
+type EntityAccessorsOutput<Store, Names extends string> = {
+  state: {};
+  props: EntityAccessorProps<Store, Names>;
+  methods: EntityAccessorMethods<Store, Names>;
 };
 
 /**
- * One call that sets up an entity collection AND its everyday operations — composes
- * `withEntities(config)` itself, then adds the standard methods (one per ngrx updater,
- * so no more `withMethods` blocks of `patchState(store, upsertEntity(...))`) plus
- * convenience signals, every member named by the collection.
+ * Adds the everyday operations for entity collections that already exist on the store — the
+ * standard methods (one per ngrx updater, so no more `withMethods` blocks of
+ * `patchState(store, upsertEntity(...))`) plus convenience signals, every member named by
+ * collection. Call it ONCE, after your `withEntities` list.
  *
- * @param config the ngrx entity config: `entity` + `collection` (+ optional `selectId`);
- *   an `entityConfig(...)` result works as-is
+ * With no arguments it covers EVERY collection on the store. Pass configs to cover only those
+ * collections — also how a custom `selectId` gets honored, since ngrx doesn't expose it from
+ * `withEntities` (an `entityConfig(...)` result works as-is; a collection without a config
+ * defaults to the `id` property).
+ *
+ * @param configs none for all collections, or the configs of the collections to cover
  *
  * @example
- * const bookConfig = entityConfig({ entity: type<Book>(), collection: 'book' });
- * export const BookStore = signalStore(withEntityAccessors(bookConfig));
+ * signalStore(
+ *   withEntities(libraryConfig),
+ *   withEntities(bookConfig),
+ *   withEntityAccessors(),           // accessors for library AND book
+ * );
  * // From withEntities: bookEntityMap() · bookIds() · bookEntities()
  * // Added signals:     books() · bookMap() · bookCount()
  * // Lookups:           bookById(id) · hasBook(id)
@@ -108,58 +125,101 @@ type EntityAccessorsOutput<Entity, Collection extends string> = {
  * //                    setBook · setBooks · setAllBooks · upsertBook · upsertBooks
  * // Update:            updateBook(id, changes) · updateBooks(ids | predicate, changes) · updateAllBooks(changes)
  * // Remove:            removeBook(id) · removeBooks(ids | predicate) · removeAllBooks()
+ * // ...and the same set for library.
+ *
+ * @example
+ * // Only the book collection, with its custom selectId honored:
+ * const bookConfig = entityConfig({ entity: type<Book>(), collection: 'book', selectId: (book) => book.isbn });
+ * signalStore(
+ *   withEntities(libraryConfig),
+ *   withEntities(bookConfig),
+ *   withEntityAccessors(bookConfig), // book accessors only; updates/removes key on isbn
+ * );
  */
-export const withEntityAccessors = <Entity, Collection extends string>(config: {
-  entity: Entity;
-  collection: Collection;
-  selectId?: SelectEntityId<NoInfer<Entity>>;
-}): SignalStoreFeature<EmptyFeatureResult, EntityAccessorsOutput<Entity, Collection>> => {
-  const collection = config.collection;
-  const cap = capitalize(collection);
-  const entityMapKey = `${collection}EntityMap`;
-  const entitiesKey = `${collection}Entities`;
-  const idsKey = `${collection}Ids`;
-  const updaterConfig = { collection, selectId: config.selectId } as any;
+export const withEntityAccessors = <
+  const Configs extends readonly EntityAccessorConfig[],
+  Store extends SignalStoreFeatureResult & RequiredEntityMaps<Configs[number]['collection']>,
+>(
+  ...configs: Configs
+): SignalStoreFeature<Store, EntityAccessorsOutput<Store, TargetNames<Store, Configs> & string>> => {
+  const resolveCollections = (innerStore: any): string[] =>
+    configs.length > 0
+      ? configs.map((config) => {
+          if (typeof innerStore[`${config.collection}EntityMap`] !== 'function') {
+            throw new Error(
+              `signalkin: '${config.collection}EntityMap' is not on the store — register withEntities ` +
+                `for '${config.collection}' before withEntityAccessors.`,
+            );
+          }
+          return config.collection;
+        })
+      : Object.keys(innerStore)
+          .filter((key) => key.endsWith('EntityMap') && key !== 'EntityMap')
+          .map((key) => key.slice(0, -'EntityMap'.length));
+
+  const selectIdFor = (collection: string): SelectEntityId<any> | undefined =>
+    configs.find((config) => config.collection === collection)?.selectId;
 
   const feature = signalStoreFeature(
-    withEntities(config as { entity: Entity; collection: Collection }),
-    withComputed((innerStore: any) => ({
-      [`${collection}s`]: computed(() => innerStore[entitiesKey]()),
-      [`${collection}Map`]: computed(() => innerStore[entityMapKey]()),
-      [`${collection}Count`]: computed(() => innerStore[idsKey]().length),
-    })),
-    withMethods((innerStore: any) => ({
-      [`add${cap}`]: (entity: Entity) => patchState(innerStore, addEntity(entity, updaterConfig)),
-      [`add${cap}s`]: (entities: Entity[]) => patchState(innerStore, addEntities(entities, updaterConfig)),
-      [`prepend${cap}`]: (entity: Entity) => patchState(innerStore, prependEntity(entity, updaterConfig)),
-      [`prepend${cap}s`]: (entities: Entity[]) => patchState(innerStore, prependEntities(entities, updaterConfig)),
-      [`set${cap}`]: (entity: Entity) => patchState(innerStore, setEntity(entity, updaterConfig)),
-      [`set${cap}s`]: (entities: Entity[]) => patchState(innerStore, setEntities(entities, updaterConfig)),
-      [`setAll${cap}s`]: (entities: Entity[]) => patchState(innerStore, setAllEntities(entities, updaterConfig)),
-      [`upsert${cap}`]: (entity: Entity) => patchState(innerStore, upsertEntity(entity, updaterConfig)),
-      [`upsert${cap}s`]: (entities: Entity[]) => patchState(innerStore, upsertEntities(entities, updaterConfig)),
-      [`update${cap}`]: (id: EntityId, changes: EntityChanges<Entity>) =>
-        patchState(innerStore, updateEntity({ id, changes } as any, updaterConfig)),
-      [`update${cap}s`]: (idsOrPredicate: EntityId[] | EntityPredicate<Entity>, changes: EntityChanges<Entity>) =>
-        patchState(
-          innerStore,
-          updateEntities(
-            (Array.isArray(idsOrPredicate)
-              ? { ids: idsOrPredicate, changes }
-              : { predicate: idsOrPredicate, changes }) as any,
-            updaterConfig,
-          ),
-        ),
-      [`updateAll${cap}s`]: (changes: EntityChanges<Entity>) =>
-        patchState(innerStore, updateAllEntities(changes as any, updaterConfig)),
-      [`remove${cap}`]: (id: EntityId) => patchState(innerStore, removeEntity(id, updaterConfig)),
-      [`remove${cap}s`]: (idsOrPredicate: EntityId[] | EntityPredicate<Entity>) =>
-        patchState(innerStore, removeEntities(idsOrPredicate as any, updaterConfig)),
-      [`removeAll${cap}s`]: () => patchState(innerStore, removeAllEntities(updaterConfig)),
-      [`${collection}ById`]: (id: EntityId) => innerStore[entityMapKey]()[id],
-      [`has${cap}`]: (id: EntityId) => innerStore[entityMapKey]()[id] !== undefined,
-    })),
+    withComputed((innerStore: any) => {
+      const props: Record<string, Signal<unknown>> = {};
+
+      resolveCollections(innerStore).forEach((collection) => {
+        props[`${collection}s`] = computed(() => innerStore[`${collection}Entities`]());
+        props[`${collection}Map`] = computed(() => innerStore[`${collection}EntityMap`]());
+        props[`${collection}Count`] = computed(() => innerStore[`${collection}Ids`]().length);
+      });
+
+      return props;
+    }),
+    withMethods((innerStore: any) => {
+      const methods: Record<string, (...args: any[]) => unknown> = {};
+
+      resolveCollections(innerStore).forEach((collection) => {
+        const cap = capitalize(collection);
+        const entityMapKey = `${collection}EntityMap`;
+        const updaterConfig = { collection, selectId: selectIdFor(collection) } as any;
+
+        methods[`add${cap}`] = (entity: unknown) => patchState(innerStore, addEntity(entity, updaterConfig));
+        methods[`add${cap}s`] = (entities: unknown[]) => patchState(innerStore, addEntities(entities, updaterConfig));
+        methods[`prepend${cap}`] = (entity: unknown) => patchState(innerStore, prependEntity(entity, updaterConfig));
+        methods[`prepend${cap}s`] = (entities: unknown[]) =>
+          patchState(innerStore, prependEntities(entities, updaterConfig));
+        methods[`set${cap}`] = (entity: unknown) => patchState(innerStore, setEntity(entity, updaterConfig));
+        methods[`set${cap}s`] = (entities: unknown[]) => patchState(innerStore, setEntities(entities, updaterConfig));
+        methods[`setAll${cap}s`] = (entities: unknown[]) =>
+          patchState(innerStore, setAllEntities(entities, updaterConfig));
+        methods[`upsert${cap}`] = (entity: unknown) => patchState(innerStore, upsertEntity(entity, updaterConfig));
+        methods[`upsert${cap}s`] = (entities: unknown[]) =>
+          patchState(innerStore, upsertEntities(entities, updaterConfig));
+        methods[`update${cap}`] = (id: EntityId, changes: unknown) =>
+          patchState(innerStore, updateEntity({ id, changes } as any, updaterConfig));
+        methods[`update${cap}s`] = (idsOrPredicate: EntityId[] | EntityPredicate<unknown>, changes: unknown) =>
+          patchState(
+            innerStore,
+            updateEntities(
+              (Array.isArray(idsOrPredicate)
+                ? { ids: idsOrPredicate, changes }
+                : { predicate: idsOrPredicate, changes }) as any,
+              updaterConfig,
+            ),
+          );
+        methods[`updateAll${cap}s`] = (changes: unknown) =>
+          patchState(innerStore, updateAllEntities(changes as any, updaterConfig));
+        methods[`remove${cap}`] = (id: EntityId) => patchState(innerStore, removeEntity(id, updaterConfig));
+        methods[`remove${cap}s`] = (idsOrPredicate: EntityId[] | EntityPredicate<unknown>) =>
+          patchState(innerStore, removeEntities(idsOrPredicate as any, updaterConfig));
+        methods[`removeAll${cap}s`] = () => patchState(innerStore, removeAllEntities(updaterConfig));
+        methods[`${collection}ById`] = (id: EntityId) => innerStore[entityMapKey]()[id];
+        methods[`has${cap}`] = (id: EntityId) => innerStore[entityMapKey]()[id] !== undefined;
+      });
+
+      return methods;
+    }),
   );
 
-  return feature as unknown as SignalStoreFeature<EmptyFeatureResult, EntityAccessorsOutput<Entity, Collection>>;
+  return feature as unknown as SignalStoreFeature<
+    Store,
+    EntityAccessorsOutput<Store, TargetNames<Store, Configs> & string>
+  >;
 };

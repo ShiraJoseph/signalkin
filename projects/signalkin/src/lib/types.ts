@@ -14,6 +14,9 @@ export type Related<Entity, Count extends Cardinality> = IsSingle<Count> extends
   ? Entity | undefined
   : Entity[];
 
+// TODO: support custom pluralization — a way for a caller to supply the plural form per
+// collection (e.g. `entity` → `entities`, not `entitys`) that flows through every generated
+// name, type-level and runtime.
 /** Leading noun of a generated key: the bare name for a 1-side, pluralized (`+s`) for a many-side. */
 export type Lead<Name extends string, Count extends Cardinality> = IsSingle<Count> extends true
   ? Name
@@ -28,14 +31,23 @@ export type IdLead<Name extends string, Count extends Cardinality> = IsSingle<Co
 export type IsFixedMulti<Count extends Cardinality> = Count extends 'many' ? false : Count extends 1 ? false : true;
 
 /**
- * The state a relationship REQUIRES: both collections' entity maps must already exist. Intersected
- * into the feature's `Input` so `signalStore` refuses to compile it unless placed AFTER both
+ * The state a feature REQUIRES: the named collections' entity maps must already exist. Intersected
+ * into a feature's `Input` so `signalStore` refuses to compile it unless placed AFTER those
  * `withEntities` calls (ordering enforcement), and so the real entity types can be read back out.
  */
-export type RequiredEntityStore<FromName extends string, ToName extends string> = {
-  state: Record<`${FromName}EntityMap`, Record<EntityId, unknown>> &
-    Record<`${ToName}EntityMap`, Record<EntityId, unknown>>;
+export type RequiredEntityMaps<Names extends string> = {
+  state: Record<`${Names}EntityMap`, Record<EntityId, unknown>>;
 };
+
+/** {@link RequiredEntityMaps} for a relationship's two sides. */
+export type RequiredEntityStore<FromName extends string, ToName extends string> = RequiredEntityMaps<
+  FromName | ToName
+>;
+
+/** The collection names present on a store's state, read off its `${name}EntityMap` keys. */
+export type CollectionNames<State> = {
+  [Key in keyof State & string]: Key extends `${infer Name}EntityMap` ? Name : never;
+}[keyof State & string];
 
 /**
  * Extracts a collection's entity type from the inferred input store, by collection name — e.g.

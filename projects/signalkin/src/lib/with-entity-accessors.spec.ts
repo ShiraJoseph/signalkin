@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { signalStore, type } from '@ngrx/signals';
-import { entityConfig } from '@ngrx/signals/entities';
+import { entityConfig, withEntities } from '@ngrx/signals/entities';
 import { withEntityAccessors } from './with-entity-accessors';
 
 interface Book {
@@ -9,8 +9,40 @@ interface Book {
   pages: number;
 }
 
+interface Genre {
+  code: string;
+  label: string;
+}
+
+interface Library {
+  id: string;
+  name: string;
+}
+
 const bookConfig = entityConfig({ entity: type<Book>(), collection: 'book' });
-const BookStore = signalStore({ providedIn: 'root' }, withEntityAccessors(bookConfig));
+const genreConfig = entityConfig({ entity: type<Genre>(), collection: 'genre', selectId: (genre) => genre.code });
+const libraryConfig = entityConfig({ entity: type<Library>(), collection: 'library' });
+
+const BookStore = signalStore(
+  { providedIn: 'root' },
+  withEntities(bookConfig),
+  withEntities(genreConfig),
+  withEntityAccessors(bookConfig, genreConfig),
+);
+
+const AllStore = signalStore(
+  { providedIn: 'root' },
+  withEntities(bookConfig),
+  withEntities(libraryConfig),
+  withEntityAccessors(),
+);
+
+const OnlyBooksStore = signalStore(
+  { providedIn: 'root' },
+  withEntities(bookConfig),
+  withEntities(genreConfig),
+  withEntityAccessors(bookConfig),
+);
 
 const dune: Book = { id: 'b1', title: 'Dune', pages: 412 };
 const hobbit: Book = { id: 'b2', title: 'The Hobbit', pages: 310 };
@@ -24,7 +56,24 @@ describe('withEntityAccessors', () => {
     store.setAllBooks([dune, hobbit]);
   });
 
-  it('exposes the collection through books / bookMap / bookCount / bookIds', () => {
+  it('covers every collection on the store when called with no configs', () => {
+    const allStore = TestBed.inject(AllStore);
+    allStore.addBook(dune);
+    allStore.addLibrary({ id: 'l1', name: 'Central' });
+    expect(allStore.books()).toEqual([dune]);
+    expect(allStore.librarys()).toEqual([{ id: 'l1', name: 'Central' }]);
+    expect(allStore.libraryCount()).toBe(1);
+  });
+
+  it('covers only the passed configs’ collections when configs are given', () => {
+    const onlyBooks = TestBed.inject(OnlyBooksStore);
+    onlyBooks.addBook(dune);
+    expect(onlyBooks.books()).toEqual([dune]);
+    expect((onlyBooks as any).genres).toBeUndefined();
+    expect((onlyBooks as any).addGenre).toBeUndefined();
+  });
+
+  it('exposes the collection through books / bookMap / bookCount alongside ngrx’s own bookIds', () => {
     expect(store.books()).toEqual([dune, hobbit]);
     expect(store.bookMap()).toEqual({ b1: dune, b2: hobbit });
     expect(store.bookCount()).toBe(2);
@@ -111,22 +160,22 @@ describe('withEntityAccessors', () => {
     expect(store.bookCount()).toBe(0);
   });
 
-  it('respects a custom selectId', () => {
-    interface Tag {
-      key: string;
-      label: string;
-    }
-    const TagStore = signalStore(
+  it('honors a custom selectId from a passed config', () => {
+    store.addGenre({ code: 'g1', label: 'scifi' });
+    expect(store.genreById('g1')?.label).toBe('scifi');
+    expect(store.hasGenre('g1')).toBe(true);
+
+    store.updateGenre('g1', { label: 'sci-fi' });
+    expect(store.genreById('g1')?.label).toBe('sci-fi');
+  });
+
+  it('throws a clear error when a passed config’s collection is missing from the store', () => {
+    const BrokenStore = signalStore(
       { providedIn: 'root' },
-      withEntityAccessors({ entity: type<Tag>(), collection: 'tag', selectId: (tag) => tag.key }),
+      withEntities(bookConfig),
+      withEntityAccessors(genreConfig as any),
     );
-    const tagStore = TestBed.inject(TagStore);
 
-    tagStore.addTag({ key: 't1', label: 'scifi' });
-    expect(tagStore.tagById('t1')?.label).toBe('scifi');
-    expect(tagStore.hasTag('t1')).toBe(true);
-
-    tagStore.updateTag('t1', { label: 'sci-fi' });
-    expect(tagStore.tagById('t1')?.label).toBe('sci-fi');
+    expect(() => TestBed.inject(BrokenStore)).toThrowError(/genreEntityMap.*register withEntities/s);
   });
 });
