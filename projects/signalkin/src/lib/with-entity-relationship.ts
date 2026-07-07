@@ -150,14 +150,14 @@ type RelationshipOutput<
  * The index auto-populates from a foreign key: any entity that carries the other side's
  * id (a book's `libraryId`) is indexed automatically and stays in sync as entities are
  * added, removed, or re-pointed — no watchers, it's a `computed` over the collection.
- * By default entities are never written; only the index reflects them (so deleting a
- * library drops it from the index but leaves each book's `libraryId` untouched, and
- * `remove`/`move` affect manual links only — an FK-derived link regenerates from the FK).
- * Set `syncForeignKeys: true` to let `remove`/`move` write the foreign keys too, so they
- * stick for FK-derived links. Entities with no foreign key are skipped and can be linked
- * by hand with the mutation methods (also the path for m:n, which has no single foreign
- * key). Each side declares how its ids are read via `selectPrimaryId` / `selectForeignId`;
- * the third arg carries on/off flags.
+ * Indexing never writes entities (deleting a library drops it from the index but leaves
+ * each book's `libraryId` untouched). The `remove`/`move` mutations DO write the entities'
+ * foreign keys by default so they stick for FK-derived links (`removeBookFromLibrary`
+ * clears the book's `libraryId`, `move` re-points it); set `syncForeignKeys: false` to
+ * never write entities, making those mutations affect manual links only. Entities with no
+ * foreign key are skipped and can be linked by hand with the mutation methods (also the
+ * path for m:n, which has no single foreign key). Each side declares how its ids are read
+ * via `selectPrimaryId` / `selectForeignId`; the third arg carries on/off flags.
  *
  * Only set `selectForeignId` on the side whose entity ACTUALLY stores the key — if a `Library`
  * has no reference to its books, don't give the library side a foreign key (leave it to the
@@ -169,8 +169,8 @@ type RelationshipOutput<
  *   the store by `name`; `plural` overrides the default `` `${name}s` `` in every generated member (e.g. `'libraries'`)
  * @param to   the other side, same shape
  * @param options flags — `autoIndex` (default `true`; set `false` for explicit links only) and
- *   `syncForeignKeys` (default `false`; `true` lets `remove`/`move` write the entities' foreign
- *   keys — needs the FK to be a property name, getter sides are skipped)
+ *   `syncForeignKeys` (default `true`: `remove`/`move` write the entities' foreign keys, needing
+ *   the FK to be a property name — getter sides are skipped; set `false` to never write entities)
  *
  * @example
  * signalStore(
@@ -202,8 +202,8 @@ export const withEntityRelationship = <
   FromPlural extends string = `${FromName}s`,
   ToPlural extends string = `${ToName}s`,
 >(
-  from: { name: FromName; count: FromCount; plural?: FromPlural; selectPrimaryId?: IdAccessor<FromId>; selectForeignId?: ForeignIdAccessor; ordered?: boolean },
-  to: { name: ToName; count: ToCount; plural?: ToPlural; selectPrimaryId?: IdAccessor<ToId>; selectForeignId?: ForeignIdAccessor; ordered?: boolean },
+  from: { name: FromName; count: FromCount; plural?: FromPlural; selectPrimaryId?: IdAccessor<FromId>; selectForeignId?: ForeignIdAccessor },
+  to: { name: ToName; count: ToCount; plural?: ToPlural; selectPrimaryId?: IdAccessor<ToId>; selectForeignId?: ForeignIdAccessor },
   options?: RelationshipOptions,
 ): SignalStoreFeature<
   Store,
@@ -228,7 +228,7 @@ export const withEntityRelationship = <
   const toIsSingle = to.count === 1;
 
   const autoIndex = options?.autoIndex ?? true;
-  const syncForeignKeys = options?.syncForeignKeys ?? false;
+  const syncForeignKeys = options?.syncForeignKeys ?? true;
   const readFromPrimaryId = toIdReader(from.selectPrimaryId, 'id');
   const readToPrimaryId = toIdReader(to.selectPrimaryId, 'id');
   // Default foreign-key name pluralizes when the side points at MORE THAN ONE of the other:

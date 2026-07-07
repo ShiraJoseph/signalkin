@@ -89,8 +89,6 @@ export type RelationshipSide<Name extends string, Count extends Cardinality> = {
    * (an array, e.g. a book's `aisleIds`) when it links to more than one.
    */
   selectForeignId?: ForeignIdAccessor;
-  /** Reserved: whether link order is meaningful (arrays already keep insertion order). */
-  ordered?: boolean;
 };
 
 /** Flags to turn optional behavior on or off. */
@@ -100,9 +98,9 @@ export type RelationshipOptions = {
   /**
    * Let `remove`/`move` mutations write the entities' foreign keys, so removal sticks for
    * FK-derived links (`removeBookFromLibrary` clears the book's `libraryId`; `move` re-points it).
-   * Default: `false` (entities are never written; the FK is the source of truth).
-   * Only works on a side whose `selectForeignId` is a property NAME (or defaulted) — a getter
-   * can't be written back, so getter sides are skipped.
+   * Default: `true`. Set `false` to never write entities (the FK stays the source of truth and
+   * those mutations affect manual links only). Only works on a side whose `selectForeignId` is
+   * a property NAME (or defaulted) — a getter can't be written back, so getter sides are skipped.
    */
   syncForeignKeys?: boolean;
 };

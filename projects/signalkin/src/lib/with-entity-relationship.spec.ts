@@ -127,17 +127,13 @@ describe('withEntityRelationship', () => {
     });
   });
 
-  describe('syncForeignKeys: true', () => {
+  describe('syncForeignKeys (on by default)', () => {
     const SyncStore = signalStore(
       { providedIn: 'root' },
       withEntities(libraryConfig),
       withEntities(bookConfig),
       withEntityAccessors({ ...libraryConfig, plural: 'libraries' }, bookConfig),
-      withEntityRelationship(
-        { name: 'library', count: 1 },
-        { name: 'book', count: 'many' },
-        { syncForeignKeys: true },
-      ),
+      withEntityRelationship({ name: 'library', count: 1 }, { name: 'book', count: 'many' }),
     );
 
     let store: InstanceType<typeof SyncStore>;
@@ -168,11 +164,7 @@ describe('withEntityRelationship', () => {
         withEntities(rowConfig),
         withEntities(bookConfig),
         withEntityAccessors(),
-        withEntityRelationship(
-          { name: 'row', count: 2 },
-          { name: 'book', count: 'many' },
-          { syncForeignKeys: true },
-        ),
+        withEntityRelationship({ name: 'row', count: 2 }, { name: 'book', count: 'many' }),
       );
       const arrayStore = TestBed.inject(ArraySyncStore);
       arrayStore.setAllRows([{ id: 'r1' }, { id: 'r2' }]);
@@ -192,7 +184,6 @@ describe('withEntityRelationship', () => {
         withEntityRelationship(
           { name: 'library', count: 1 },
           { name: 'book', count: 'many', selectForeignId: (book) => book.libraryId },
-          { syncForeignKeys: true },
         ),
       );
       const getterStore = TestBed.inject(GetterStore);
@@ -202,6 +193,27 @@ describe('withEntityRelationship', () => {
       getterStore.removeBookFromLibrary('l1', 'b1');
       expect(getterStore.bookById('b1')?.libraryId).toBe('l1');
       expect(getterStore.libraryIdByBookId('b1')).toBe('l1');
+    });
+
+    it('never writes entities when syncForeignKeys is false', () => {
+      const OptOutStore = signalStore(
+        { providedIn: 'root' },
+        withEntities(libraryConfig),
+        withEntities(bookConfig),
+        withEntityAccessors({ ...libraryConfig, plural: 'libraries' }, bookConfig),
+        withEntityRelationship(
+          { name: 'library', count: 1 },
+          { name: 'book', count: 'many' },
+          { syncForeignKeys: false },
+        ),
+      );
+      const optOutStore = TestBed.inject(OptOutStore);
+      optOutStore.setAllLibraries([central]);
+      optOutStore.setAllBooks([dune]);
+
+      optOutStore.removeBookFromLibrary('l1', 'b1');
+      expect(optOutStore.bookById('b1')?.libraryId).toBe('l1');
+      expect(optOutStore.libraryIdByBookId('b1')).toBe('l1');
     });
   });
 
