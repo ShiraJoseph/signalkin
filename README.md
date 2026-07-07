@@ -31,9 +31,9 @@ Add the features in this order (enforced at compile time):
 
 ```mermaid
 flowchart TD
-    A["withEntities — register each collection"] --> B["withEntityAccessors — CRUD + signals per collection"]
-    B --> C["withEntityRelationship — link two collections"]
-    C --> D["withTransitiveRelationship — walk across links"]
+    A["withEntities: register each collection"] --> B["withEntityAccessors: CRUD + signals per collection"]
+    B --> C["withEntityRelationship: link two collections"]
+    C --> D["withTransitiveRelationship: walk across links"]
 ```
 
 With a `Library` that has many `Shelf`s and a `Shelf` that has many `Book`s, you get lookups in both directions, plus transitive lookups across the chain:
