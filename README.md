@@ -102,10 +102,10 @@ export const CatalogStore = signalStore(
 ```ts
 const store = inject(CatalogStore);
 
-store.addBook({ id: 'b1', shelfId: 's1', title: 'Dune' });   // from withEntityAccessors
-store.booksByShelfId('s1');                                  // -> Book[]
-store.shelfByBook(book);                                     // -> Shelf | undefined
-store.booksByLibrary(library);                               // -> Book[]   (walks library -> shelf -> book)
+store.addBook({ id: 'b1', shelfId: 's1', title: 'Dune' });
+store.booksByShelfId('s1');       // Book[]
+store.shelfByBook(book);          // Shelf | undefined
+store.booksByLibrary(library);    // Book[]
 ```
 
 ---
@@ -114,12 +114,12 @@ store.booksByLibrary(library);                               // -> Book[]   (wal
 
 ### `withEntityAccessors(...configs)`
 
-Standard collection methods and signals. No arguments covers every collection; pass configs to cover only those.
+Standard collection methods and signals. No arguments covers every collection, a config narrows to one collection, and a `plural` on the config sets an irregular noun.
 
 ```ts
-withEntityAccessors()                        // all collections
-withEntityAccessors(bookConfig)              // book only
-withEntityAccessors({ ...libraryConfig, plural: 'libraries' })   // irregular plural
+withEntityAccessors();
+withEntityAccessors(bookConfig);
+withEntityAccessors({ ...libraryConfig, plural: 'libraries' });
 ```
 
 For `collection: 'book'`:
