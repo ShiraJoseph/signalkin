@@ -13,6 +13,35 @@ Relationships and everyday collection methods for [`@ngrx/signals`](https://ngrx
 
 Every generated member is named after your collection and fully typed.
 
+The examples below model this database:
+
+```mermaid
+erDiagram
+    ORGANIZATION ||--o{ TEAM : has
+    TEAM ||--o{ PROJECT : has
+    PROJECT ||--o{ TASK : has
+
+    ORGANIZATION {
+        string id PK
+        string name
+    }
+    TEAM {
+        string id PK
+        string organizationId FK
+        string name
+    }
+    PROJECT {
+        string id PK
+        string teamId FK
+        string name
+    }
+    TASK {
+        string id PK
+        string projectId FK
+        string title
+    }
+```
+
 ---
 
 ## Install
@@ -21,122 +50,59 @@ Every generated member is named after your collection and fully typed.
 npm install signalkin
 ```
 
-Peer dependencies: `@angular/core` and `@ngrx/signals`.
+Peer dependencies: `@angular/core` and `@ngrx/signals`. signalkin's features sit on top of ngrx entity collections created with `withEntities`; see the [NgRx SignalStore entity management guide](https://ngrx.io/guide/signals/signal-store/entity-management) for those.
 
----
-
-## How it works
-
-Add the features in this order (enforced at compile time):
-
-```mermaid
-flowchart TD
-    A["withEntities: register each collection"] --> B["withEntityAccessors: CRUD + signals per collection"]
-    B --> C["withEntityRelationship: link two collections"]
-    C --> D["withTransitiveRelationship: walk across links"]
-```
-
-With a `Library` that has many `Shelf`s and a `Shelf` that has many `Book`s, you get lookups in both directions, plus transitive lookups across the chain:
-
-```mermaid
-flowchart LR
-    L["Library"] -->|"shelvesByLibrary()"| S["Shelf"]
-    S -->|"libraryByShelf()"| L
-    S -->|"booksByShelf()"| B["Book"]
-    B -->|"shelfByBook()"| S
-    L -. "booksByLibrary()  transitive" .-> B
-```
-
----
-
-## Quick start
-
-### 1. Describe your entities and their configs
+Entities and configs used throughout:
 
 ```ts
 import { entityConfig, type } from '@ngrx/signals/entities';
 
-interface Library { id: string; name: string; }
-interface Shelf   { id: string; libraryId: string; }
-interface Book    { id: string; shelfId: string; title: string; }
+interface Organization { id: string; name: string; }
+interface Team    { id: string; organizationId: string; name: string; }
+interface Project { id: string; teamId: string; name: string; }
+interface Task    { id: string; projectId: string; title: string; }
 
-const libraryConfig = entityConfig({ entity: type<Library>(), collection: 'library' });
-const shelfConfig   = entityConfig({ entity: type<Shelf>(),   collection: 'shelf' });
-const bookConfig    = entityConfig({ entity: type<Book>(),    collection: 'book' });
-```
-
-### 2. Register the collections with ngrx
-
-```ts
-import { signalStore } from '@ngrx/signals';
-import { withEntities } from '@ngrx/signals/entities';
-
-signalStore(
-  { providedIn: 'root' },
-  withEntities(libraryConfig),
-  withEntities(shelfConfig),
-  withEntities(bookConfig),
-);
-```
-
-### 3. Add signalkin's features, in order
-
-```ts
-import { withEntityAccessors, withEntityRelationship, withTransitiveRelationship } from 'signalkin';
-
-export const CatalogStore = signalStore(
-  { providedIn: 'root' },
-  withEntities(libraryConfig),
-  withEntities(shelfConfig),
-  withEntities(bookConfig),
-
-  withEntityAccessors(),
-  withEntityRelationship({ name: 'library', count: 1 }, { name: 'shelf', count: 'many' }),
-  withEntityRelationship({ name: 'shelf',   count: 1 }, { name: 'book',  count: 'many' }),
-  withTransitiveRelationship({ from: 'library', to: 'book', through: 'shelf' }),
-);
-```
-
-### 4. Inject and use it
-
-```ts
-const store = inject(CatalogStore);
-
-store.addBook({ id: 'b1', shelfId: 's1', title: 'Dune' });
-store.booksByShelfId('s1');       // Book[]
-store.shelfByBook(book);          // Shelf | undefined
-store.booksByLibrary(library);    // Book[]
+const organizationConfig = entityConfig({ entity: type<Organization>(), collection: 'organization' });
+const teamConfig    = entityConfig({ entity: type<Team>(),    collection: 'team' });
+const projectConfig = entityConfig({ entity: type<Project>(), collection: 'project' });
+const taskConfig    = entityConfig({ entity: type<Task>(),    collection: 'task' });
 ```
 
 ---
 
-## API
-
-### `withEntityAccessors(...configs)`
+## `withEntityAccessors(...configs)`
 
 Standard collection methods and signals. No arguments covers every collection, a config narrows to one collection, and a `plural` on the config sets an irregular noun.
 
 ```ts
-withEntityAccessors();
-withEntityAccessors(bookConfig);
-withEntityAccessors({ ...libraryConfig, plural: 'libraries' });
+import { signalStore } from '@ngrx/signals';
+import { withEntities } from '@ngrx/signals/entities';
+import { withEntityAccessors } from 'signalkin';
+
+export const TaskStore = signalStore(
+  { providedIn: 'root' },
+  withEntities(taskConfig),
+  withEntityAccessors(),
+);
 ```
 
-For `collection: 'book'`:
+Generates, for `collection: 'task'`:
 
 | Kind | Members |
 |---|---|
-| Signals | `books()`, `bookMap()`, `bookCount()` |
-| Lookups | `bookById(id)`, `hasBook(id)` |
-| Add | `addBook(book)`, `addBooks(books)`, `prependBook(book)`, `prependBooks(books)` |
-| Set | `setBook(book)`, `setBooks(books)`, `setAllBooks(books)` |
-| Upsert | `upsertBook(book)`, `upsertBooks(books)` |
-| Update | `updateBook(id, changes)`, `updateBooks(ids \| predicate, changes)`, `updateAllBooks(changes)` |
-| Remove | `removeBook(id)`, `removeBooks(ids \| predicate)`, `removeAllBooks()` |
+| Signals | `tasks()`, `taskMap()`, `taskCount()` |
+| Lookups | `taskById(id)`, `hasTask(id)` |
+| Add | `addTask(task)`, `addTasks(tasks)`, `prependTask(task)`, `prependTasks(tasks)` |
+| Set | `setTask(task)`, `setTasks(tasks)`, `setAllTasks(tasks)` |
+| Upsert | `upsertTask(task)`, `upsertTasks(tasks)` |
+| Update | `updateTask(id, changes)`, `updateTasks(ids \| predicate, changes)`, `updateAllTasks(changes)` |
+| Remove | `removeTask(id)`, `removeTasks(ids \| predicate)`, `removeAllTasks()` |
 
-`changes` is a `Partial<Book>` or a `(book) => Partial<Book>` updater.
+`changes` is a `Partial<Task>` or a `(task) => Partial<Task>` updater.
 
-### `withEntityRelationship(from, to, options?)`
+---
+
+## `withEntityRelationship(from, to, options?)`
 
 Relates two collections. Each side is `{ name, count, plural?, selectPrimaryId?, selectForeignId? }`:
 
@@ -148,22 +114,63 @@ Relates two collections. Each side is `{ name, count, plural?, selectPrimaryId?,
 
 `options`: `autoIndex` (default `true`, index from foreign keys automatically) and `syncForeignKeys` (default `true`, `remove` / `move` write the entity's foreign key so the change sticks).
 
-For `withEntityRelationship({ name: 'library', count: 1 }, { name: 'book', count: 'many' })`:
+```ts
+import { signalStore } from '@ngrx/signals';
+import { withEntities } from '@ngrx/signals/entities';
+import { withEntityRelationship } from 'signalkin';
+
+export const TeamStore = signalStore(
+  { providedIn: 'root' },
+  withEntities(teamConfig),
+  withEntities(projectConfig),
+  withEntityRelationship({ name: 'team', count: 1 }, { name: 'project', count: 'many' }),
+);
+```
+
+Generates:
 
 | Kind | Members |
 |---|---|
-| Index signals | `libraryBookMap()`, `bookLibraryMap()` |
-| Lookups | `booksByLibrary(library)`, `booksByLibraryId(id)`, `bookIdsByLibrary(library)`, `bookIdsByLibraryId(id)` and the reverse four (`libraryByBook`, ...) |
-| Checks | `libraryHasBook(libraryId, bookId)`, `bookHasLibrary(bookId, libraryId)`, `bookCountByLibrary(id)`, `libraryCountByBook(id)` |
-| Mutations | `addBookToLibrary(libraryId, bookId)`, `removeBookFromLibrary(libraryId, bookId)`, `moveBookToLibrary(bookId, newLibraryId)` |
+| Index signals | `teamProjectMap()`, `projectTeamMap()` |
+| Lookups | `projectsByTeam(team)`, `projectsByTeamId(id)`, `projectIdsByTeam(team)`, `projectIdsByTeamId(id)` and the reverse four (`teamByProject`, ...) |
+| Checks | `teamHasProject(teamId, projectId)`, `projectHasTeam(projectId, teamId)`, `projectCountByTeam(id)`, `teamCountByProject(id)` |
+| Mutations | `addProjectToTeam(teamId, projectId)`, `removeProjectFromTeam(teamId, projectId)`, `moveProjectToTeam(projectId, newTeamId)` |
 
-A side with a fixed `count` of 2 or more also gets composite set-lookups: `bookByAisles(...aisles)`, `bookByAisleIds(...ids)`, `bookIdByAisles(...aisles)`, `bookIdByAisleIds(...ids)`.
+A side with a fixed `count` of 2 or more also gets composite set-lookups. For `{ name: 'tag', count: 2 }` linked to `{ name: 'task', count: 'many' }`: `taskByTags(...tags)`, `taskByTagIds(...ids)`, `taskIdByTags(...tags)`, `taskIdByTagIds(...ids)`.
 
-### `withTransitiveRelationship({ from, to, through, ... })`
+---
 
-Lookups between two collections that walk through the intermediary collection(s). `through` is one name or an ordered list. Config: `{ from, to, through, fromPlural?, toPlural?, selectFromId?, selectToId? }`. Register the direct relationship for every hop before this one.
+## `withTransitiveRelationship({ from, to, through, ... })`
 
-For `{ from: 'author', to: 'comment', through: 'post' }`: `commentsByAuthor(author)`, `commentsByAuthorId(id)`, `commentIdsByAuthor(author)`, `commentIdsByAuthorId(id)` and the reverse four. Results are arrays both directions.
+Lookups between two collections that walk through the intermediary collection(s), composing the direct relationships along the path. `through` is one name or an ordered list. Config: `{ from, to, through, fromPlural?, toPlural?, selectFromId?, selectToId? }`.
+
+```ts
+import { signalStore } from '@ngrx/signals';
+import { withEntities } from '@ngrx/signals/entities';
+import { withEntityRelationship, withTransitiveRelationship } from 'signalkin';
+
+export const OrganizationStore = signalStore(
+  { providedIn: 'root' },
+  withEntities(organizationConfig),
+  withEntities(teamConfig),
+  withEntities(projectConfig),
+  withEntities(taskConfig),
+
+  withEntityRelationship({ name: 'organization', count: 1 }, { name: 'team',    count: 'many' }),
+  withEntityRelationship({ name: 'team',         count: 1 }, { name: 'project', count: 'many' }),
+  withEntityRelationship({ name: 'project',      count: 1 }, { name: 'task',    count: 'many' }),
+
+  withTransitiveRelationship({ from: 'organization', to: 'task', through: ['team', 'project'] }),
+);
+```
+
+Generates:
+
+| Kind | Members |
+|---|---|
+| Lookups | `tasksByOrganization(organization)`, `tasksByOrganizationId(id)`, `taskIdsByOrganization(organization)`, `taskIdsByOrganizationId(id)` and the reverse four (`organizationsByTask`, ...) |
+
+Results are arrays in both directions and are deduped.
 
 ---
 
@@ -173,12 +180,17 @@ Pass a config or `selectPrimaryId` / `selectForeignId` for a collection that key
 
 ```ts
 withEntityRelationship(
-  { name: 'library', count: 1, selectPrimaryId: 'id2' },
-  { name: 'book', count: 'many', selectPrimaryId: 'id2', selectForeignId: 'libraryId2' },
+  { name: 'team', count: 1, selectPrimaryId: 'id2' },
+  { name: 'project', count: 'many', selectPrimaryId: 'id2', selectForeignId: 'teamId2' },
 );
 ```
 
-Default pluralization is `+s`. Set `plural` (or `fromPlural` / `toPlural` on a transitive config) for irregular nouns: `{ name: 'library', count: 'many', plural: 'libraries' }`.
+Default pluralization is `+s`. Set `plural` (or `fromPlural` / `toPlural` on a transitive config) for an irregular noun:
+
+```ts
+withEntityAccessors({ ...libraryConfig, plural: 'libraries' });
+withEntityRelationship({ name: 'library', count: 'many', plural: 'libraries' }, ...);
+```
 
 ---
 
