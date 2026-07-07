@@ -97,4 +97,12 @@ export type RelationshipSide<Name extends string, Count extends Cardinality> = {
 export type RelationshipOptions = {
   /** Auto-populate the index from foreign keys as entities change. Default: `true`. Set `false` for explicit links only. */
   autoIndex?: boolean;
+  /**
+   * Let `remove`/`move` mutations write the entities' foreign keys, so removal sticks for
+   * FK-derived links (`removeBookFromLibrary` clears the book's `libraryId`; `move` re-points it).
+   * Default: `false` (entities are never written; the FK is the source of truth).
+   * Only works on a side whose `selectForeignId` is a property NAME (or defaulted) — a getter
+   * can't be written back, so getter sides are skipped.
+   */
+  syncForeignKeys?: boolean;
 };

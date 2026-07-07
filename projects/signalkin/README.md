@@ -87,7 +87,10 @@ Each side is `{ name, count, selectPrimaryId?, selectForeignId? }`:
 - `selectPrimaryId` — how to read this entity's own id (default the `id` property; keep it matching the collection's `selectId`). A typed getter lets branded id types flow through id-returning methods.
 - `selectForeignId` — how to read this entity's foreign key to the other side. Set it ONLY on a side whose entity actually stores the key. Defaults: `` `${otherName}Id` `` when the side links to one of the other, `` `${otherName}Ids` `` (an array) when it links to more than one.
 
-`options`: `{ autoIndex?: boolean }` — default `true`; set `false` to index only explicit `add`/`remove`/`move` links.
+`options`:
+
+- `autoIndex` — default `true`; set `false` to index only explicit `add`/`remove`/`move` links.
+- `syncForeignKeys` — default `false`. When `true`, `remove` clears the matching id from the entities' foreign keys and `move` re-points them, so those mutations stick for FK-derived links. Needs the FK to be a property name (the default, or a string `selectForeignId`); a getter-based side can't be written back and is skipped.
 
 For `withEntityRelationship({ name: 'library', count: 1 }, { name: 'book', count: 'many' })`:
 
@@ -118,7 +121,7 @@ Register the direct relationship for every hop BEFORE the transitive one. The tw
 ## Known limitations
 
 - **Default pluralization is naive `+s`** (`book` → `books`, but `library` → `librarys`). Give an irregular noun its real plural where it's used: `plural` on an accessors config (`{ ...libraryConfig, plural: 'libraries' }`) or a relationship side (`{ name: 'library', count: 'many', plural: 'libraries' }`), and `fromPlural` / `toPlural` on a transitive config. It flows through every generated member, type-level and runtime.
-- **`removeXFromY` / `moveXToY` affect only manual links.** An FK-derived link regenerates from the entity's foreign key on the next read; to unlink, change the entity's FK in your own store (the FK is the source of truth).
+- **By default, `removeXFromY` / `moveXToY` affect only manual links** — an FK-derived link regenerates from the entity's foreign key on the next read (the FK is the source of truth). Turn on `syncForeignKeys` to have them write the FKs too. Getter-based `selectForeignId` sides can't be written back yet (planned: a write callback so they can).
 - **A `'many'` side gets no composite set-lookup** (kept off to bound the generated surface).
 - **`ordered` on a relationship side is reserved** and currently a no-op (arrays already keep insertion order).
 - **Coupled to ngrx naming:** the runtime reads the merged store by ngrx's `${collection}EntityMap` convention.

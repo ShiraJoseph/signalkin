@@ -127,6 +127,84 @@ describe('withEntityRelationship', () => {
     });
   });
 
+  describe('syncForeignKeys: true', () => {
+    const SyncStore = signalStore(
+      { providedIn: 'root' },
+      withEntities(libraryConfig),
+      withEntities(bookConfig),
+      withEntityAccessors({ ...libraryConfig, plural: 'libraries' }, bookConfig),
+      withEntityRelationship(
+        { name: 'library', count: 1 },
+        { name: 'book', count: 'many' },
+        { syncForeignKeys: true },
+      ),
+    );
+
+    let store: InstanceType<typeof SyncStore>;
+
+    beforeEach(() => {
+      store = TestBed.inject(SyncStore);
+      store.setAllLibraries([central, eastside]);
+      store.setAllBooks([dune, hobbit]);
+    });
+
+    it('makes remove stick for an FK-derived link by clearing the foreign key', () => {
+      store.removeBookFromLibrary('l1', 'b1');
+      expect(store.bookById('b1')?.libraryId).toBeUndefined();
+      expect(store.libraryByBookId('b1')).toBeUndefined();
+      expect(store.booksByLibraryId('l1')).toEqual([hobbit]);
+    });
+
+    it('re-points the foreign key on move', () => {
+      store.moveBookToLibrary('b1', 'l2');
+      expect(store.bookById('b1')?.libraryId).toBe('l2');
+      expect(store.libraryIdByBookId('b1')).toBe('l2');
+      expect(store.booksByLibraryId('l1')).toEqual([hobbit]);
+    });
+
+    it('drops the id from an array foreign key on remove', () => {
+      const ArraySyncStore = signalStore(
+        { providedIn: 'root' },
+        withEntities(rowConfig),
+        withEntities(bookConfig),
+        withEntityAccessors(),
+        withEntityRelationship(
+          { name: 'row', count: 2 },
+          { name: 'book', count: 'many' },
+          { syncForeignKeys: true },
+        ),
+      );
+      const arrayStore = TestBed.inject(ArraySyncStore);
+      arrayStore.setAllRows([{ id: 'r1' }, { id: 'r2' }]);
+      arrayStore.setAllBooks([{ id: 'b9', title: 'Everywhere', rowIds: ['r1', 'r2'] }]);
+
+      arrayStore.removeBookFromRow('r1', 'b9');
+      expect(arrayStore.bookById('b9')?.rowIds).toEqual(['r2']);
+      expect(arrayStore.rowsByBookId('b9')).toEqual([{ id: 'r2' }]);
+    });
+
+    it('skips a getter-based selectForeignId side instead of writing', () => {
+      const GetterStore = signalStore(
+        { providedIn: 'root' },
+        withEntities(libraryConfig),
+        withEntities(bookConfig),
+        withEntityAccessors({ ...libraryConfig, plural: 'libraries' }, bookConfig),
+        withEntityRelationship(
+          { name: 'library', count: 1 },
+          { name: 'book', count: 'many', selectForeignId: (book) => book.libraryId },
+          { syncForeignKeys: true },
+        ),
+      );
+      const getterStore = TestBed.inject(GetterStore);
+      getterStore.setAllLibraries([central]);
+      getterStore.setAllBooks([dune]);
+
+      getterStore.removeBookFromLibrary('l1', 'b1');
+      expect(getterStore.bookById('b1')?.libraryId).toBe('l1');
+      expect(getterStore.libraryIdByBookId('b1')).toBe('l1');
+    });
+  });
+
   describe('composite set-lookup (fixed count 2)', () => {
     it('finds the single entity pinned by a full id-set, order-insensitively', () => {
       const store = TestBed.inject(RowStore);

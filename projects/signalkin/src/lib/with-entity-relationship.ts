@@ -8,7 +8,7 @@ import {
   withMethods,
   withState,
 } from '@ngrx/signals';
-import { EntityId } from '@ngrx/signals/entities';
+import { EntityId, updateEntity } from '@ngrx/signals/entities';
 import { addUnique, capitalize, hasId, mergeLinks, projectLinks, toIdReader, toIdsReader } from './internal-helpers';
 import {
   Cardinality,
@@ -150,11 +150,14 @@ type RelationshipOutput<
  * The index auto-populates from a foreign key: any entity that carries the other side's
  * id (a book's `libraryId`) is indexed automatically and stays in sync as entities are
  * added, removed, or re-pointed — no watchers, it's a `computed` over the collection.
- * Entities are never written; only the index reflects them (so deleting a library drops
- * it from the index but leaves each book's `libraryId` untouched). Entities with no
- * foreign key are skipped and can be linked by hand with the mutation methods (also the
- * path for m:n, which has no single foreign key). Each side declares how its ids are read
- * via `selectPrimaryId` / `selectForeignId`; the third arg carries on/off flags.
+ * By default entities are never written; only the index reflects them (so deleting a
+ * library drops it from the index but leaves each book's `libraryId` untouched, and
+ * `remove`/`move` affect manual links only — an FK-derived link regenerates from the FK).
+ * Set `syncForeignKeys: true` to let `remove`/`move` write the foreign keys too, so they
+ * stick for FK-derived links. Entities with no foreign key are skipped and can be linked
+ * by hand with the mutation methods (also the path for m:n, which has no single foreign
+ * key). Each side declares how its ids are read via `selectPrimaryId` / `selectForeignId`;
+ * the third arg carries on/off flags.
  *
  * Only set `selectForeignId` on the side whose entity ACTUALLY stores the key — if a `Library`
  * has no reference to its books, don't give the library side a foreign key (leave it to the
@@ -165,7 +168,9 @@ type RelationshipOutput<
  * @param from one side: `{ name, count, plural?, selectPrimaryId?, selectForeignId? }` — entity type inferred from
  *   the store by `name`; `plural` overrides the default `` `${name}s` `` in every generated member (e.g. `'libraries'`)
  * @param to   the other side, same shape
- * @param options flags — `autoIndex` (default `true`; set `false` for explicit links only)
+ * @param options flags — `autoIndex` (default `true`; set `false` for explicit links only) and
+ *   `syncForeignKeys` (default `false`; `true` lets `remove`/`move` write the entities' foreign
+ *   keys — needs the FK to be a property name, getter sides are skipped)
  *
  * @example
  * signalStore(
@@ -223,12 +228,23 @@ export const withEntityRelationship = <
   const toIsSingle = to.count === 1;
 
   const autoIndex = options?.autoIndex ?? true;
+  const syncForeignKeys = options?.syncForeignKeys ?? false;
   const readFromPrimaryId = toIdReader(from.selectPrimaryId, 'id');
   const readToPrimaryId = toIdReader(to.selectPrimaryId, 'id');
   // Default foreign-key name pluralizes when the side points at MORE THAN ONE of the other:
   // a from-entity links to `to.count` of the to-side, a to-entity links to `from.count` of the from-side.
-  const readFromForeignIds = toIdsReader(from.selectForeignId, toIsSingle ? `${toName}Id` : `${toName}Ids`);
-  const readToForeignIds = toIdsReader(to.selectForeignId, fromIsSingle ? `${fromName}Id` : `${fromName}Ids`);
+  const fromForeignKeyDefault = toIsSingle ? `${toName}Id` : `${toName}Ids`;
+  const toForeignKeyDefault = fromIsSingle ? `${fromName}Id` : `${fromName}Ids`;
+  const readFromForeignIds = toIdsReader(from.selectForeignId, fromForeignKeyDefault);
+  const readToForeignIds = toIdsReader(to.selectForeignId, toForeignKeyDefault);
+  // The WRITABLE foreign-key property per side, for syncForeignKeys — undefined when the
+  // accessor is a getter, which can't be written back.
+  // TODO: find a way to sync getter-based foreign keys too (e.g. an optional write callback
+  // alongside selectForeignId) so syncForeignKeys stops skipping those sides.
+  const fromForeignKey =
+    typeof from.selectForeignId === 'function' ? undefined : (from.selectForeignId ?? fromForeignKeyDefault);
+  const toForeignKey =
+    typeof to.selectForeignId === 'function' ? undefined : (to.selectForeignId ?? toForeignKeyDefault);
 
   const forwardLinksKey = `_${fromName}${capitalize(toName)}Links`;
   const reverseLinksKey = `_${toName}${capitalize(fromName)}Links`;
@@ -308,16 +324,54 @@ export const withEntityRelationship = <
         writeLinks(forward, backward);
       };
 
-      // TODO: this only removes MANUAL links. An FK-derived link regenerates from the
-      // entity's foreign key on the next read, so removing/moving/deleting doesn't stick
-      // unless we also clear that foreign key on the entity. Add optional entity-patching
-      // (e.g. a `clearForeignKey` flag) so removal works for FK-derived links too.
+      const fromUpdaterConfig = { collection: fromName, selectId: (entity: any) => readFromPrimaryId(entity) } as any;
+      const toUpdaterConfig = { collection: toName, selectId: (entity: any) => readToPrimaryId(entity) } as any;
+
+      /**
+       * Writes one entity's foreign key when syncForeignKeys is on and the side has a writable
+       * key: the current FK ids run through `mutate`, then an array FK is replaced with the
+       * result and a scalar FK with its first id (`undefined` clears it). No-ops on a missing
+       * entity or an unchanged result.
+       */
+      const writeForeignIds = (
+        entityMapKey: string,
+        updaterConfig: any,
+        foreignKey: string | undefined,
+        isArrayForeignKey: boolean,
+        entityId: EntityId,
+        mutate: (currentIds: EntityId[]) => EntityId[],
+      ): void => {
+        if (!syncForeignKeys || foreignKey === undefined) return;
+        const entity = innerStore[entityMapKey]()[entityId];
+        if (entity === undefined) return;
+
+        const current = entity[foreignKey];
+        const currentIds = Array.isArray(current) ? current.filter(hasId) : hasId(current) ? [current] : [];
+        const nextIds = mutate(currentIds);
+        if (nextIds.length === currentIds.length && nextIds.every((id, index) => id === currentIds[index])) return;
+
+        const nextValue = isArrayForeignKey ? nextIds : nextIds[0];
+        patchState(
+          innerStore,
+          updateEntity({ id: entityId, changes: { [foreignKey]: nextValue } as any }, updaterConfig),
+        );
+      };
+
+      // Removes the manual link, and (with syncForeignKeys) also clears the matching id from
+      // both entities' foreign keys — otherwise an FK-derived link regenerates on the next read.
       const removeLink = (fromId: EntityId, toId: EntityId): void => {
         const forward = { ...innerStore[forwardLinksKey]() };
         const backward = { ...innerStore[reverseLinksKey]() };
         forward[fromId] = (forward[fromId] ?? []).filter((id: EntityId) => id !== toId);
         backward[toId] = (backward[toId] ?? []).filter((id: EntityId) => id !== fromId);
         writeLinks(forward, backward);
+
+        writeForeignIds(toEntityMapKey, toUpdaterConfig, toForeignKey, !fromIsSingle, toId, (ids) =>
+          ids.filter((id) => id !== fromId),
+        );
+        writeForeignIds(fromEntityMapKey, fromUpdaterConfig, fromForeignKey, !toIsSingle, fromId, (ids) =>
+          ids.filter((id) => id !== toId),
+        );
       };
 
       const moveTo = (toId: EntityId, newFromId: EntityId): void => {
@@ -331,6 +385,23 @@ export const withEntityRelationship = <
         backward[toId] = [newFromId];
         forward[newFromId] = addUnique(forward[newFromId], toId);
         writeLinks(forward, backward);
+
+        // With syncForeignKeys: re-point the to-entity's FK, and move the to-id from every old
+        // from-entity's FK to the new one.
+        writeForeignIds(toEntityMapKey, toUpdaterConfig, toForeignKey, !fromIsSingle, toId, () => [newFromId]);
+        if (syncForeignKeys && fromForeignKey !== undefined) {
+          Object.values(innerStore[fromEntityMapKey]()).forEach((entity: any) => {
+            const fromId = readFromPrimaryId(entity);
+            if (!hasId(fromId) || fromId === newFromId) return;
+
+            writeForeignIds(fromEntityMapKey, fromUpdaterConfig, fromForeignKey, !toIsSingle, fromId, (ids) =>
+              ids.filter((id) => id !== toId),
+            );
+          });
+          writeForeignIds(fromEntityMapKey, fromUpdaterConfig, fromForeignKey, !toIsSingle, newFromId, (ids) =>
+            addUnique(ids, toId),
+          );
+        }
       };
 
       const toEntityLead = toIsSingle ? toName : toPlural;
