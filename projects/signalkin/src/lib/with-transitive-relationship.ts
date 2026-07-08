@@ -37,35 +37,16 @@ type TransitiveOutput<
 };
 
 /**
- * Relates two collections that store NO foreign key to each other, by walking through the
- * intermediary collection(s) that link them — a "grandparent" lookup (e.g. a library's books
- * via its shelves). Composes the adjacency maps that {@link withEntityRelationship} already put
- * on the store (e.g. `libraryShelfMap` ∘ `shelfBookMap`), so it holds no state, no foreign key,
- * and no mutations — it purely reads.
- *
- * Place AFTER the direct relationships for every hop on the path (they provide the maps this
- * walks). Lookups return arrays both directions (a walk can fan out to more than one endpoint)
- * and are deduped. Only the two endpoint entity maps are type-checked as present; that the
- * intermediate hop maps exist is your responsibility (register each hop's direct relationship).
- *
- * @param config the endpoints, the path between them, and how to read each endpoint's id
- * @param config.from  the starting collection name; the entity type is inferred from the store
- * @param config.to    the destination collection name; the entity type is inferred from the store
- * @param config.through the intermediary between them — a single name (`'shelf'`) or an ordered list (`['aisle', 'shelf']`) for 3rd/4th-degree links
- * @param config.fromPlural the plural of `from`, used in the generated member names (default `` `${from}s` ``)
- * @param config.toPlural   the plural of `to`, used in the generated member names (default `` `${to}s` ``)
- * @param config.selectFromId how to read a `from` entity's id (default the `'id'` property; match the collection's `selectId`)
- * @param config.selectToId   how to read a `to` entity's id (default the `'id'` property; match the collection's `selectId`)
+ * Read-only lookups between two collections that share no foreign key, by walking the intermediary collection(s) between them (`through` a single name or an ordered list); returns arrays both directions.
  *
  * @example
  * signalStore(
  *   withEntities(libraryConfig), withEntities(shelfConfig), withEntities(bookConfig),
- *   withEntityRelationship({ collection: 'library', count: 1, plural: 'libraries' }, { collection: 'shelf', count: 'many' }),
+ *   withEntityRelationship({ collection: 'library', count: 1 }, { collection: 'shelf', count: 'many' }),
  *   withEntityRelationship({ collection: 'shelf', count: 1 }, { collection: 'book', count: 'many' }),
- *   withTransitiveRelationship({ from: 'library', to: 'book', through: 'shelf', fromPlural: 'libraries' }),
+ *   withTransitiveRelationship({ from: 'library', to: 'book', through: 'shelf' }),
  * );
- * // booksByLibrary(library | id) -> Book[]     (also bookIdsByLibrary(library | id) -> id[])
- * // librariesByBook(book | id) -> Library[]    (also libraryIdsByBook(book | id) -> id[])
+ * // booksByLibrary(library | id) -> Book[]   ·   librariesByBook(book | id) -> Library[]
  */
 export const withTransitiveRelationship = <
   FromName extends string,

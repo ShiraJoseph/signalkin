@@ -166,28 +166,7 @@ type RelationshipOutput<
 };
 
 /**
- * Relates two ngrx entity collections and adds typed lookups, counts, existence checks, composite
- * set-lookups, and link mutations — every member named after each side's `collection`, like ngrx's
- * own `${collection}EntityMap`. Every lookup that takes an entity also accepts its id.
- *
- * Place AFTER both collections' `withEntities`. Pass each side as `{ collection, count }`: `collection`
- * is the ngrx collection name, `count` is how many of THAT side relate to one of the other (`1`,
- * another number, or `'many'`) — it drives the names and return shapes. The side shape matches an
- * `entityConfig(...)` result, so `{ ...bookConfig, count: 'many' }` works.
- *
- * The index auto-populates from a foreign key: any entity that carries the other side's id (a book's
- * `libraryId`) is indexed automatically and stays in sync as entities are added, removed, or
- * re-pointed — no watchers, it's a `computed` over the collection. Indexing never writes entities
- * (deleting a library drops it from the index but leaves each book's `libraryId` untouched). The
- * `remove`/`move` mutations DO write the entities' foreign keys by default so they stick for
- * FK-derived links; set `syncForeignKeys: false` to never write entities. Entities with no foreign
- * key are skipped and can be linked by hand with the mutation methods (also the path for m:n).
- *
- * @param from one side: `{ collection, count, plural?, selectId?, selectForeignId? }` — entity type
- *   inferred from the store by `collection`; `plural` overrides the default `` `${collection}s` ``
- * @param to   the other side, same shape
- * @param options flags — `autoIndex` (default `true`), `syncForeignKeys` (default `true`), and
- *   `compositeLookups` (default `true`; set `false` to skip the set-lookup indexes)
+ * Relates two entity collections into typed cross-lookups, counts, composite set-lookups, and link mutations named by each side's `collection`; `count` (`1`, a number, or `'many'`) drives the names and shapes, and every lookup takes the entity or its id.
  *
  * @example
  * signalStore(
@@ -195,10 +174,9 @@ type RelationshipOutput<
  *   withEntities(bookConfig),
  *   withEntityRelationship({ collection: 'library', count: 1 }, { collection: 'book', count: 'many' }),
  * );
- * // booksByLibrary(library | id) -> Book[]   ·   bookIdsByLibrary(library | id) -> id[]
- * // libraryByBook(book | id) -> Library | undefined   ·   libraryIdByBook(book | id) -> id | undefined
+ * // booksByLibrary(library | id) -> Book[]   ·   libraryByBook(book | id) -> Library | undefined
  * // libraryHasBook · bookCountByLibrary · addBookToLibrary · removeBookFromLibrary · moveBookToLibrary
- * // book side is 'many', so a composite lookup keyed by a full book-set: libraryByBooks(...books | ids) -> Library
+ * // book side is 'many', so a set-lookup keyed by a full book-set: libraryByBooks(...books | ids) -> Library
  */
 export const withEntityRelationship = <
   FromName extends string,

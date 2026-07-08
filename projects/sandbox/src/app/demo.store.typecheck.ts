@@ -4,9 +4,9 @@
  * the sandbox build.
  */
 import { inject } from '@angular/core';
-import { signalStore, type } from '@ngrx/signals';
+import { patchState, signalStore, type, withComputed, withMethods, withState } from '@ngrx/signals';
 import { entityConfig, withEntities } from '@ngrx/signals/entities';
-import { withEntityRelationship, withTransitiveRelationship } from 'signalkin';
+import { withEntityAccessors, withEntityRelationship, withTransitiveRelationship } from 'signalkin';
 import { Book, DemoStore, Library, LibrarySystem } from './demo.store';
 
 const assertType = <T>(value: T): T => value;
@@ -40,6 +40,103 @@ export const brandedProbe = (): void => {
   // Id-returning lookups keep the brand (GadgetId[] / WidgetId), not EntityId.
   assertType<GadgetId[]>(store.gadgetIdsByWidget('w-1'));
   assertType<WidgetId | undefined>(store.widgetIdByGadget('g-1'));
+};
+
+// REPRO of Shira's data.store: spreading a config that carries a custom selectId into the side.
+const SpreadStore = signalStore(
+  withEntities(widgetConfig),
+  withEntities(gadgetConfig),
+  withEntityRelationship({ ...widgetConfig, count: 1 }, { ...gadgetConfig, count: 'many' }),
+);
+
+export const spreadProbe = (): void => {
+  const store = inject(SpreadStore);
+  assertType<Gadget[]>(store.gadgetsByWidget('w-1'));
+};
+
+// REPRO 2: Shira's DataStore, copied byte-for-byte from LogicSolver.
+type UUID = `${string}-${string}-${string}-${string}-${string}`;
+type CellId = UUID;
+type OptionId = UUID;
+type FeatureId = UUID;
+
+class Feature {
+  public id: number;
+  id2: FeatureId;
+  public name = '';
+  public optionsIds?: number[] = [];
+
+  constructor() {
+    this.id = Math.random();
+    this.id2 = crypto.randomUUID();
+  }
+}
+
+class OptionEntity {
+  public id: number;
+  id2: OptionId;
+  public name = '';
+  public featureId?: number;
+  featureId2?: FeatureId;
+
+  constructor() {
+    this.id = Math.random();
+    this.id2 = crypto.randomUUID();
+  }
+}
+
+class Cell {
+  public id: number;
+  id2: CellId;
+  public optionIds?: Array<OptionId>;
+  public leftOptionId?: number;
+  public topOptionId?: number;
+  public value = '';
+
+  constructor() {
+    this.id = Math.random();
+    this.id2 = crypto.randomUUID();
+  }
+}
+
+const toEntityConfig = <T extends { id2: UUID }, C extends string>(collection: C) =>
+  entityConfig({
+    entity: type<T>(),
+    collection,
+    selectId: (entity) => entity.id2,
+  });
+
+const featureConfig = toEntityConfig<Feature, 'feature'>('feature');
+const optionConfig = toEntityConfig<OptionEntity, 'option'>('option');
+const cellConfig = toEntityConfig<Cell, 'cell'>('cell');
+
+interface DataState {
+  optionCountPerFeature: number;
+}
+
+const DataStoreRepro = signalStore(
+  { providedIn: 'root' },
+  withState<DataState>({ optionCountPerFeature: 0 }),
+  withEntities(featureConfig),
+  withEntities(optionConfig),
+  withEntities(cellConfig),
+  withEntityAccessors(),
+  withEntityRelationship({ ...featureConfig, count: 1 }, { ...optionConfig, count: 'many' }),
+  withEntityRelationship({ ...optionConfig, count: 2 }, { ...cellConfig, count: 'many' }),
+  withTransitiveRelationship({ from: 'feature', to: 'cell', through: 'option' }),
+  withMethods((store) => ({
+    setOptionsCountPerFeature: (count: number) => {
+      patchState(store, { optionCountPerFeature: count });
+    },
+  })),
+
+  withComputed(({ optionCountPerFeature }) => ({
+    optionsCount: () => optionCountPerFeature(),
+  })),
+);
+
+export const herProbe = (): void => {
+  inject(DataStoreRepro);
 };
 
 export const typecheckProbe = (): void => {

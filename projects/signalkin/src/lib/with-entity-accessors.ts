@@ -115,43 +115,16 @@ type EntityAccessorsOutput<Store, Configs extends readonly EntityAccessorConfig[
 };
 
 /**
- * Adds the everyday operations for entity collections that already exist on the store — the
- * standard methods (one per ngrx updater, so no more `withMethods` blocks of
- * `patchState(store, upsertEntity(...))`) plus convenience signals, every member named by
- * collection. Call it ONCE, after your `withEntities` list.
- *
- * With no arguments it covers EVERY collection on the store. Pass configs to cover only those
- * collections — also how a custom `selectId` gets honored, since ngrx doesn't expose it from
- * `withEntities` (an `entityConfig(...)` result works as-is; a collection without a config
- * defaults to the `id` property). A config may also name the collection's `plural`
- * (`{ ...libraryConfig, plural: 'libraries' }`) to replace the default `+s` in every
- * pluralized member (`libraries()`, `setAllLibraries`, ...).
- *
- * @param configs none for all collections, or the configs of the collections to cover
+ * Standard collection methods and convenience signals for the store's entities, named by collection — no args covers every collection, or pass configs to narrow and to honor a custom `selectId` / `plural`.
  *
  * @example
  * signalStore(
- *   withEntities(libraryConfig),
  *   withEntities(bookConfig),
- *   withEntityAccessors(),           // accessors for library AND book
+ *   withEntityAccessors(bookConfig),
  * );
- * // From withEntities: bookEntityMap() · bookIds() · bookEntities()
- * // Added signals:     books() · bookMap() · bookCount()
- * // Lookups:           bookById(id) · hasBook(book | id)
- * // Add/set/upsert:    addBook(book) · addBooks(books) · prependBook · prependBooks
- * //                    setBook · setBooks · setAllBooks · upsertBook · upsertBooks
- * // Update:            updateBook(id, changes) · updateBooks(ids | predicate, changes) · updateAllBooks(changes)
- * // Remove:            removeBook(id) · removeBooks(ids | predicate) · removeAllBooks()
- * // ...and the same set for library.
- *
- * @example
- * // Only the book collection, with its custom selectId honored:
- * const bookConfig = entityConfig({ entity: type<Book>(), collection: 'book', selectId: (book) => book.isbn });
- * signalStore(
- *   withEntities(libraryConfig),
- *   withEntities(bookConfig),
- *   withEntityAccessors(bookConfig), // book accessors only; updates/removes key on isbn
- * );
+ * // books() · bookMap() · bookCount() · bookById(id) · hasBook(book | id)
+ * // addBook · addBooks · prependBook · setBook · setAllBooks · upsertBook
+ * // updateBook(book | id, changes) · updateAllBooks(changes) · removeBook(book | id) · removeAllBooks()
  */
 export const withEntityAccessors = <
   const Configs extends readonly EntityAccessorConfig[],
