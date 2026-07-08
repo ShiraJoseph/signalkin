@@ -353,15 +353,17 @@ export class RegionDashboard {
 ```
 
 ---
-## Develop
+## Contributing
+
+Contributions are welcome. The repo is an Angular workspace with two projects: `projects/signalkin` (the published library, source in `src/lib`) and `projects/sandbox` (a throwaway app whose `demo.store.typecheck.ts` asserts the generated types resolve through the built package).
 
 ```
-npx ng build signalkin # build library to dist/signalkin
-npx ng build sandbox # type-check against the built package
-npx ng test signalkin # vitest suite
+npx ng build signalkin  # build library to dist/signalkin (build this before the sandbox)
+npx ng build sandbox     # type-check the sandbox against the built package
+npx ng test signalkin    # vitest suite
 ```
 
-Build the library before the sandbox.
+Before opening a PR, make sure all three pass, and add a sandbox type assertion for any type-level change. Work on a feature branch and open a PR rather than pushing to `main`. Agent-specific guidance (how the member names are derived, common pitfalls) lives in [`AGENTS.md`](AGENTS.md).
 
 ---
 

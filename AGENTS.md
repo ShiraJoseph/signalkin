@@ -13,6 +13,10 @@ Public API (from `signalkin`):
 - `withTransitiveRelationship(config)`: read-only lookups that walk through intermediary collections.
 - Types: `Cardinality`, `EntityPredicate`, `ForeignIdAccessor`, `IdAccessor`, `RelationshipOptions`, `RelationshipSide`, `EntityAccessorConfig`.
 
+**Entity-or-id (HARD RULE for the surface).** Every generated member that IDENTIFIES an existing entity — a lookup, a count, an existence check, or a mutation like `removeBook` / `addBookToLibrary` — accepts the entity OR its id (`Entity | EntityId`). There is no separate `...ById` variant. The exceptions: `bookById(id)` is id-only (it is the id -> entity resolver), and `addBook` / `setBook` / `upsertBook` / `prependBook` (and their plurals) take a whole entity because they insert a record.
+
+**Relationship sides are entityConfig-shaped.** A side is `{ collection, count, plural?, selectId?, selectForeignId? }` — same `collection` / `selectId` keys as `entityConfig`, so `{ ...bookConfig, count: 'many' }` is valid.
+
 ## Composition order (HARD RULE)
 
 Inside `signalStore(...)`, features must appear in this order. It is enforced at compile time; getting it wrong is a type error, not a runtime bug.
@@ -26,25 +30,25 @@ A transitive relationship reads the adjacency maps that direct relationships put
 
 ## Predicting generated member names
 
-You do not need to look up the surface; it is derived mechanically from the collection `name` and its `count`.
+You do not need to look up the surface; it is derived mechanically from the collection name and its `count`. Every identifying argument below accepts `Entity | EntityId`.
 
-**Accessors**, for `collection: 'book'` (plural `books`): `books()`, `bookMap()`, `bookCount()`, `bookById(id)`, `hasBook(id)`, `addBook`/`addBooks`, `prependBook`/`prependBooks`, `setBook`/`setBooks`/`setAllBooks`, `upsertBook`/`upsertBooks`, `updateBook(id, changes)`/`updateBooks(ids | predicate, changes)`/`updateAllBooks(changes)`, `removeBook(id)`/`removeBooks(ids | predicate)`/`removeAllBooks()`.
+**Accessors**, for `collection: 'book'` (plural `books`): `books()`, `bookMap()`, `bookCount()`, `bookById(id)` (id-only resolver), `hasBook(book)`, `addBook`/`addBooks`, `prependBook`/`prependBooks`, `setBook`/`setBooks`/`setAllBooks`, `upsertBook`/`upsertBooks`, `updateBook(book, changes)`/`updateBooks(books | predicate, changes)`/`updateAllBooks(changes)`, `removeBook(book)`/`removeBooks(books | predicate)`/`removeAllBooks()`.
 
-**Relationship**, for `{ name: 'library', count: 1 }` linked to `{ name: 'book', count: 'many' }`:
+**Relationship**, for `{ collection: 'library', count: 1 }` linked to `{ collection: 'book', count: 'many' }`:
 - A `count: 1` side returns a single value (`Entity | undefined`) and its noun stays singular. A `count: 'many'` or fixed-number side returns an array and uses the plural noun.
-- Lookups: `<returnNoun>By<InputName>` and `<returnNoun>By<InputName>Id`, plus id-returning `<returnIdNoun>By...`. Both directions. So: `booksByLibrary`, `booksByLibraryId`, `bookIdsByLibrary`, `bookIdsByLibraryId`, `libraryByBook`, `libraryByBookId`, `libraryIdByBook`, `libraryIdByBookId`.
+- Directional lookups are keyed by ONE of the other side (singular input noun): `<returnNoun>By<InputName>` plus id-returning `<returnIdNoun>By<InputName>`, both directions. So: `booksByLibrary`, `bookIdsByLibrary`, `libraryByBook`, `libraryIdByBook`. No `...ById` twins — the one method takes an entity or an id.
 - Checks: `libraryHasBook`, `bookHasLibrary`, `bookCountByLibrary`, `libraryCountByBook`.
-- Mutations: `addBookToLibrary(libraryId, bookId)`, `removeBookFromLibrary(libraryId, bookId)`, `moveBookToLibrary(bookId, newLibraryId)`.
+- Mutations: `addBookToLibrary(library, book)`, `removeBookFromLibrary(library, book)`, `moveBookToLibrary(book, newLibrary)`.
 - Index signals: `libraryBookMap()`, `bookLibraryMap()`.
-- A side with a fixed `count` of 2+ also gets composite set-lookups: `<other>By<Plural>(...entities)`, `<other>By<Name>Ids(...ids)`, and the id variants. A `'many'` side does not.
+- Composite set-lookups (keyed by a full SET, so plural input noun): generated for EVERY side whose `count != 1`, both directions, off with `compositeLookups: false`. Result is a SINGLE entity when the keyed side has a fixed number count (candidate key) OR the returned side is `count: 1`; otherwise an ARRAY of all matches — and the return noun goes singular/plural to match. Here the book side is `'many'`, so: `libraryByBooks(...books)` -> `Library | undefined` and `libraryIdByBooks(...books)`. (In a 2:many like `row(2)`-<`book(many)`: `bookByRows(...rows)` -> `Book | undefined`; the reverse `rowsByBooks(...books)` -> `Row[]`. In m:m: both directions are arrays.)
 
-**Transitive**, for `{ from: 'library', to: 'book', through: 'shelf' }`: `booksByLibrary`/`booksByLibraryId`/`bookIdsByLibrary`/`bookIdsByLibraryId` and the reverse four. Arrays both directions, deduped.
+**Transitive**, for `{ from: 'library', to: 'book', through: 'shelf' }`: `booksByLibrary`/`bookIdsByLibrary` and the reverse `librariesByBook`/`libraryIdsByBook` (entity or id in). Arrays both directions, deduped.
 
 ## Common mistakes to avoid
 
 - **Pluralization is naive `+s`.** `library` becomes `librarys`. For any irregular noun, set `plural` on the accessors config or relationship side, and `fromPlural` / `toPlural` on a transitive config. It flows through every generated member at both the type and runtime level. Do not leave `librarys` in generated code.
 - **`selectForeignId` goes ONLY on the side that actually stores the key.** A `Book` has `libraryId`, so the book side carries the foreign key; the `Library` side does not. Do not add a foreign key to a side whose entity has no reference to the other.
-- **`selectId` is not visible to downstream features.** If a collection keys on something other than `id`, pass its `entityConfig` to `withEntityAccessors` and set `selectPrimaryId` on the relationship side. Otherwise ids default to the `id` property and mutations key on the wrong field.
+- **`selectId` is not visible to downstream features.** If a collection keys on something other than `id`, pass its `entityConfig` to `withEntityAccessors` and set `selectId` on the relationship side (or spread the config: `{ ...bookConfig, count: 'many' }`). Otherwise ids default to the `id` property and mutations key on the wrong field.
 - **`syncForeignKeys` needs a property-name foreign key.** With the default `true`, `remove`/`move` write the entity's foreign key so the change sticks. A getter-based `selectForeignId` cannot be written back and is silently skipped; use a string key if you need those mutations to persist.
 - **Do not add `withMethods` blocks that re-implement accessors.** If you find `patchState(store, upsertEntity(...))` by hand, `withEntityAccessors` already generated `upsertBook`.
 
