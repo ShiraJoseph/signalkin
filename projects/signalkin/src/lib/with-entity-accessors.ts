@@ -168,6 +168,7 @@ export const withEntityAccessors = <
                 `for '${config.collection}' before withEntityAccessors.`,
             );
           }
+
           return config.collection;
         })
       : Object.keys(innerStore)
@@ -201,7 +202,6 @@ export const withEntityAccessors = <
         const entityMapKey = `${collection}EntityMap`;
         const updaterConfig = { collection, selectId: selectIdFor(collection) } as any;
         const resolveRef = toRefResolver(toIdReader(selectIdFor(collection), 'id'));
-        // An update/remove target may be an entity or an id; a predicate passes straight through.
         const resolveTargets = (entitiesOrPredicate: unknown): unknown =>
           Array.isArray(entitiesOrPredicate) ? entitiesOrPredicate.map(resolveRef) : entitiesOrPredicate;
 

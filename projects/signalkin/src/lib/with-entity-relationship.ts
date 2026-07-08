@@ -270,6 +270,7 @@ export const withEntityRelationship = <
       const foreignLinks = computed(() => {
         const forward: Record<EntityId, EntityId[]> = {};
         const backward: Record<EntityId, EntityId[]> = {};
+
         if (!autoIndex) return { forward, backward };
 
         // A to-side entity naming its from-side owner(s) (e.g. book.libraryId, or a book's aisleIds).
@@ -352,11 +353,13 @@ export const withEntityRelationship = <
       ): void => {
         if (!syncForeignKeys || foreignKey === undefined) return;
         const entity = innerStore[entityMapKey]()[entityId];
+
         if (entity === undefined) return;
 
         const current = entity[foreignKey];
         const currentIds = Array.isArray(current) ? current.filter(hasId) : hasId(current) ? [current] : [];
         const nextIds = mutate(currentIds);
+
         if (nextIds.length === currentIds.length && nextIds.every((id, index) => id === currentIds[index])) return;
 
         const nextValue = isArrayForeignKey ? nextIds : nextIds[0];
@@ -398,6 +401,7 @@ export const withEntityRelationship = <
         // With syncForeignKeys: re-point the to-entity's FK, and move the to-id from every old
         // from-entity's FK to the new one.
         writeForeignIds(toEntityMapKey, toUpdaterConfig, toForeignKey, !fromIsSingle, toId, () => [newFromId]);
+
         if (syncForeignKeys && fromForeignKey !== undefined) {
           Object.values(innerStore[fromEntityMapKey]()).forEach((entity: any) => {
             const fromId = readFromPrimaryId(entity);
@@ -433,7 +437,6 @@ export const withEntityRelationship = <
       const shapeFromIds = (ids: EntityId[]): unknown => (fromIsSingle ? ids[0] : ids);
 
       const methods: Record<string, (...args: any[]) => unknown> = {
-        // Related entity(ies) / id(s) in each direction, keyed by ONE of the other side (entity or id).
         [`${toEntityLead}By${fromCap}`]: (from: any) => shapeToEntities(toIdsByFrom(resolveFromRef(from))),
         [`${toIdLead}By${fromCap}`]: (from: any) => shapeToIds(toIdsByFrom(resolveFromRef(from))),
         [`${fromEntityLead}By${toCap}`]: (to: any) => shapeFromEntities(fromIdsByTo(resolveToRef(to))),
@@ -502,11 +505,14 @@ export const withEntityRelationship = <
 
       if (compositeLookups) {
         // from's id-set keys the to-side (source: to -> its froms).
-        if (isMulti(from.count))
+        if (isMulti(from.count)) {
           addSetLookup(toName, toPlural, to.count, fromPlural, from.count, reverseMapKey, toEntityMapKey, readFromPrimaryId);
+        }
+
         // to's id-set keys the from-side (source: from -> its tos).
-        if (isMulti(to.count))
+        if (isMulti(to.count)) {
           addSetLookup(fromName, fromPlural, from.count, toPlural, to.count, forwardMapKey, fromEntityMapKey, readToPrimaryId);
+        }
       }
 
       return methods;

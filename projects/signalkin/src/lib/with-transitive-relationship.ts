@@ -122,6 +122,7 @@ export const withTransitiveRelationship = <
                     `withEntityRelationship for every hop on its path registered before it (path: ${path.join(' → ')}).`,
                 );
               }
+
               const map = innerStore[mapKey]() as Record<EntityId, EntityId[]>;
 
               return Array.from(new Set(ids.flatMap((id) => map[id] ?? [])));
