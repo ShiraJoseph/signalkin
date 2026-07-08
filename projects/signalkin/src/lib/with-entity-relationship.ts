@@ -29,6 +29,7 @@ import {
   ForeignIdAccessor,
   IdAccessor,
   IdLead,
+  IdOf,
   IsMulti,
   Lead,
   Related,
@@ -205,13 +206,13 @@ export const withEntityRelationship = <
   ToName extends string,
   ToCount extends Cardinality,
   Store extends SignalStoreFeatureResult & RequiredEntityStore<FromName, ToName>,
-  FromId extends EntityId = EntityId,
-  ToId extends EntityId = EntityId,
+  FromSelect extends IdAccessor = IdAccessor,
+  ToSelect extends IdAccessor = IdAccessor,
   FromPlural extends string = `${FromName}s`,
   ToPlural extends string = `${ToName}s`,
 >(
-  from: { collection: FromName; count: FromCount; plural?: FromPlural; selectId?: IdAccessor<FromId>; selectForeignId?: ForeignIdAccessor },
-  to: { collection: ToName; count: ToCount; plural?: ToPlural; selectId?: IdAccessor<ToId>; selectForeignId?: ForeignIdAccessor },
+  from: { collection: FromName; count: FromCount; plural?: FromPlural; selectId?: FromSelect; selectForeignId?: ForeignIdAccessor },
+  to: { collection: ToName; count: ToCount; plural?: ToPlural; selectId?: ToSelect; selectForeignId?: ForeignIdAccessor },
   options?: RelationshipOptions,
 ): SignalStoreFeature<
   Store,
@@ -220,12 +221,12 @@ export const withEntityRelationship = <
     FromName,
     FromPlural,
     FromCount,
-    FromId,
+    IdOf<FromSelect>,
     EntityOf<Store, ToName>,
     ToName,
     ToPlural,
     ToCount,
-    ToId
+    IdOf<ToSelect>
   >
 > => {
   const fromName = from.collection;
@@ -519,12 +520,12 @@ export const withEntityRelationship = <
       FromName,
       FromPlural,
       FromCount,
-      FromId,
+      IdOf<FromSelect>,
       EntityOf<Store, ToName>,
       ToName,
       ToPlural,
       ToCount,
-      ToId
+      IdOf<ToSelect>
     >
   >;
 };

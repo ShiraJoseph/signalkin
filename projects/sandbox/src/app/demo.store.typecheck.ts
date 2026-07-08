@@ -4,9 +4,43 @@
  * the sandbox build.
  */
 import { inject } from '@angular/core';
+import { signalStore, type } from '@ngrx/signals';
+import { entityConfig, withEntities } from '@ngrx/signals/entities';
+import { withEntityRelationship, withTransitiveRelationship } from 'signalkin';
 import { Book, DemoStore, Library, LibrarySystem } from './demo.store';
 
 const assertType = <T>(value: T): T => value;
+
+// Branded ids must survive: a `selectId` getter that returns a branded id makes the id-returning
+// lookups return that brand, not a widened `EntityId`.
+type WidgetId = `w-${string}`;
+type GadgetId = `g-${string}`;
+interface Widget {
+  wid: WidgetId;
+}
+interface Gadget {
+  gid: GadgetId;
+  widgetRef: WidgetId;
+}
+
+const widgetConfig = entityConfig({ entity: type<Widget>(), collection: 'widget', selectId: (widget) => widget.wid });
+const gadgetConfig = entityConfig({ entity: type<Gadget>(), collection: 'gadget', selectId: (gadget) => gadget.gid });
+
+const BrandedStore = signalStore(
+  withEntities(widgetConfig),
+  withEntities(gadgetConfig),
+  withEntityRelationship(
+    { collection: 'widget', count: 1, selectId: (widget: Widget) => widget.wid },
+    { collection: 'gadget', count: 'many', selectId: (gadget: Gadget) => gadget.gid, selectForeignId: (gadget: Gadget) => gadget.widgetRef },
+  ),
+);
+
+export const brandedProbe = (): void => {
+  const store = inject(BrandedStore);
+  // Id-returning lookups keep the brand (GadgetId[] / WidgetId), not EntityId.
+  assertType<GadgetId[]>(store.gadgetIdsByWidget('w-1'));
+  assertType<WidgetId | undefined>(store.widgetIdByGadget('g-1'));
+};
 
 export const typecheckProbe = (): void => {
   const store = inject(DemoStore);

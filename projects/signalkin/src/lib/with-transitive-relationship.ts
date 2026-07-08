@@ -6,7 +6,7 @@ import {
 } from '@ngrx/signals';
 import { EntityId } from '@ngrx/signals/entities';
 import { capitalize, hasId, toIdReader, toRefResolver } from './internal-helpers';
-import { EntityOf, IdAccessor, RequiredEntityStore } from './types';
+import { EntityOf, IdAccessor, IdOf, RequiredEntityStore } from './types';
 
 /**
  * The read-only lookups a transitive relationship generates, both directions, arrays throughout
@@ -71,8 +71,8 @@ export const withTransitiveRelationship = <
   FromName extends string,
   ToName extends string,
   Store extends SignalStoreFeatureResult & RequiredEntityStore<FromName, ToName>,
-  FromId extends EntityId = EntityId,
-  ToId extends EntityId = EntityId,
+  FromSelect extends IdAccessor = IdAccessor,
+  ToSelect extends IdAccessor = IdAccessor,
   FromPlural extends string = `${FromName}s`,
   ToPlural extends string = `${ToName}s`,
 >(config: {
@@ -81,19 +81,19 @@ export const withTransitiveRelationship = <
   through: string | string[];
   fromPlural?: FromPlural;
   toPlural?: ToPlural;
-  selectFromId?: IdAccessor<FromId>;
-  selectToId?: IdAccessor<ToId>;
+  selectFromId?: FromSelect;
+  selectToId?: ToSelect;
 }): SignalStoreFeature<
   Store,
   TransitiveOutput<
     EntityOf<Store, FromName>,
     FromName,
     FromPlural,
-    FromId,
+    IdOf<FromSelect>,
     EntityOf<Store, ToName>,
     ToName,
     ToPlural,
-    ToId
+    IdOf<ToSelect>
   >
 > => {
   const { from, to, through } = config;
@@ -152,11 +152,11 @@ export const withTransitiveRelationship = <
       EntityOf<Store, FromName>,
       FromName,
       FromPlural,
-      FromId,
+      IdOf<FromSelect>,
       EntityOf<Store, ToName>,
       ToName,
       ToPlural,
-      ToId
+      IdOf<ToSelect>
     >
   >;
 };

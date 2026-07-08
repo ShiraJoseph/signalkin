@@ -106,6 +106,18 @@ export type EntityPredicate<Entity> = (entity: Entity) => boolean;
 export type IdAccessor<Id extends EntityId = EntityId> = string | ((entity: any) => Id);
 
 /**
+ * The id type a `selectId` accessor yields: a getter's return type (so a branded id like `OptionId`
+ * flows into the generated lookups), or `EntityId` for a string key or when no accessor is given.
+ * Capturing the accessor's own type and extracting from it is what lets the brand infer — a nested
+ * `IdAccessor<Id>` in an optional position does not.
+ */
+export type IdOf<Accessor> = Accessor extends (entity: any) => infer Id
+  ? Id extends EntityId
+    ? Id
+    : EntityId
+  : EntityId;
+
+/**
  * Like {@link IdAccessor}, but for a foreign key that may be absent or plural — a getter may return a
  * single id, an array of ids (for a side that links to more than one of the other), or `undefined`.
  */
