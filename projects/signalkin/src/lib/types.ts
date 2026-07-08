@@ -9,6 +9,15 @@ export type Cardinality = number | 'many';
 
 export type IsSingle<Count extends Cardinality> = Count extends 1 ? true : false;
 
+/** True when a side relates to MORE THAN ONE of the other (any number >= 2, or `'many'`) — i.e. not `1`. */
+export type IsMulti<Count extends Cardinality> = IsSingle<Count> extends true ? false : true;
+
+/**
+ * True when a side's count is a FIXED number of 2+ (not `1`, not `'many'`). A fixed-size set of that
+ * side's ids acts as a composite key that pins one of the other side, so a lookup keyed by it is single.
+ */
+export type IsFixedCount<Count extends Cardinality> = Count extends 'many' ? false : Count extends 1 ? false : true;
+
 /** A single entity for a 1-side (or `undefined` when the link is missing), an array for a many-side. */
 export type Related<Entity, Count extends Cardinality> = IsSingle<Count> extends true
   ? Entity | undefined
@@ -24,8 +33,37 @@ export type IdLead<Name extends string, Count extends Cardinality> = IsSingle<Co
   ? `${Name}Id`
   : `${Name}Ids`;
 
-/** True when a side's count is a fixed number of 2+ — the case where a set of that side's ids forms a composite key that pins one of the other side. */
-export type IsFixedMulti<Count extends Cardinality> = Count extends 'many' ? false : Count extends 1 ? false : true;
+/**
+ * Whether a composite lookup keyed by a SET of one side's ids returns a single entity. It does when the
+ * set is a candidate key — the keyed (input) side has a fixed count of 2+ — OR when only one of the
+ * returned side can ever match (the returned side is a 1-side). Otherwise more than one may match, so
+ * the lookup returns an array.
+ */
+export type CompositeSingle<InputCount extends Cardinality, ReturnCount extends Cardinality> =
+  IsFixedCount<InputCount> extends true ? true : IsSingle<ReturnCount>;
+
+/** A single entity when the composite lookup is single, else an array of all matches. */
+export type CompositeResult<Entity, InputCount extends Cardinality, ReturnCount extends Cardinality> =
+  CompositeSingle<InputCount, ReturnCount> extends true ? Entity | undefined : Entity[];
+
+/** A single id when the composite lookup is single, else an array of all matching ids. */
+export type CompositeIdResult<Id extends EntityId, InputCount extends Cardinality, ReturnCount extends Cardinality> =
+  CompositeSingle<InputCount, ReturnCount> extends true ? Id | undefined : Id[];
+
+/** The leading noun of a composite lookup's name: singular when it returns one, plural when it returns an array. */
+export type CompositeLead<
+  Name extends string,
+  Plural extends string,
+  InputCount extends Cardinality,
+  ReturnCount extends Cardinality,
+> = CompositeSingle<InputCount, ReturnCount> extends true ? Name : Plural;
+
+/** The id-returning noun of a composite lookup's name: `${Name}Id` when single, `${Name}Ids` when an array. */
+export type CompositeIdLead<
+  Name extends string,
+  InputCount extends Cardinality,
+  ReturnCount extends Cardinality,
+> = CompositeSingle<InputCount, ReturnCount> extends true ? `${Name}Id` : `${Name}Ids`;
 
 /**
  * The state a feature REQUIRES: the named collections' entity maps must already exist. Intersected
@@ -49,7 +87,7 @@ export type CollectionNames<State> = {
 /**
  * Extracts a collection's entity type from the inferred input store, by collection name — e.g.
  * `EntityOf<Store, 'book'>` reads `Store['state']['bookEntityMap']` and yields `Book`.
- * Reads the RAW state map (`Record<EntityId, Entity>`), which is what lets a caller pass only `name`.
+ * Reads the RAW state map (`Record<EntityId, Entity>`), which is what lets a caller pass only the name.
  */
 export type EntityOf<Store, Name extends string> = Store extends { state: infer State }
   ? State extends Record<`${Name}EntityMap`, Record<EntityId, infer Entity>>
@@ -73,16 +111,21 @@ export type IdAccessor<Id extends EntityId = EntityId> = string | ((entity: any)
  */
 export type ForeignIdAccessor = string | ((entity: any) => EntityId | EntityId[] | undefined);
 
-/** One side of a relationship: the collection `name`, how many of it relate to one of the other side, and how its ids are read. */
+/**
+ * One side of a relationship: the `collection` name, how many of it relate to one of the other side,
+ * and how its ids are read. The shape matches an `entityConfig(...)` result (`collection`, `selectId`),
+ * so `{ ...bookConfig, count: 'many' }` works — you only add the relationship-specific `count` (and
+ * optionally `plural` / `selectForeignId`).
+ */
 export type RelationshipSide<Name extends string, Count extends Cardinality> = {
   /** The ngrx collection name; the entity type is inferred from the store by this name. */
-  name: Name;
+  collection: Name;
   /** How many of this side relate to a single entity of the other side. */
   count: Count;
-  /** The plural of `name`, used in every generated member that pluralizes it. Default: `` `${name}s` ``. */
+  /** The plural of `collection`, used in every generated member that pluralizes it. Default: `` `${collection}s` ``. */
   plural?: string;
   /** How to read THIS entity's own id; keep it matching the collection's `selectId`. Default: the `'id'` property. */
-  selectPrimaryId?: IdAccessor;
+  selectId?: IdAccessor;
   /**
    * How to read THIS entity's foreign key to the other side — set ONLY if this entity actually stores it.
    * Default key: `` `${otherName}Id` `` when this side links to one of the other, `` `${otherName}Ids` ``
@@ -103,4 +146,9 @@ export type RelationshipOptions = {
    * a property NAME (or defaulted) — a getter can't be written back, so getter sides are skipped.
    */
   syncForeignKeys?: boolean;
+  /**
+   * Generate the composite set-lookups (`bookByRows(...)` / `authorByBooks(...)`) for each side that
+   * relates to more than one of the other. Default: `true`. Set `false` to skip building those indexes.
+   */
+  compositeLookups?: boolean;
 };

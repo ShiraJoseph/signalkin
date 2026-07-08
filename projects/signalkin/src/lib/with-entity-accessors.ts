@@ -28,7 +28,7 @@ import {
   upsertEntities,
   upsertEntity,
 } from '@ngrx/signals/entities';
-import { capitalize } from './internal-helpers';
+import { capitalize, toIdReader, toRefResolver } from './internal-helpers';
 import { CollectionNames, EntityOf, EntityPredicate, RequiredEntityMaps } from './types';
 
 /** What withEntityAccessors needs from a config: the collection name, its `selectId` if not the `id` property, and its `plural` if not `+s`. An `entityConfig(...)` result works as-is. */
@@ -81,10 +81,13 @@ type EntityAccessorMethods<Store, Configs extends readonly EntityAccessorConfig[
 } & {
   [Name in Names as `upsert${Capitalize<PluralOf<Configs, Name>>}`]: (entities: EntityOf<Store, Name>[]) => void;
 } & {
-  [Name in Names as `update${Capitalize<Name>}`]: (id: EntityId, changes: EntityChanges<EntityOf<Store, Name>>) => void;
+  [Name in Names as `update${Capitalize<Name>}`]: (
+    entity: EntityOf<Store, Name> | EntityId,
+    changes: EntityChanges<EntityOf<Store, Name>>,
+  ) => void;
 } & {
   [Name in Names as `update${Capitalize<PluralOf<Configs, Name>>}`]: (
-    idsOrPredicate: EntityId[] | EntityPredicate<EntityOf<Store, Name>>,
+    entitiesOrPredicate: (EntityOf<Store, Name> | EntityId)[] | EntityPredicate<EntityOf<Store, Name>>,
     changes: EntityChanges<EntityOf<Store, Name>>,
   ) => void;
 } & {
@@ -92,17 +95,17 @@ type EntityAccessorMethods<Store, Configs extends readonly EntityAccessorConfig[
     changes: EntityChanges<EntityOf<Store, Name>>,
   ) => void;
 } & {
-  [Name in Names as `remove${Capitalize<Name>}`]: (id: EntityId) => void;
+  [Name in Names as `remove${Capitalize<Name>}`]: (entity: EntityOf<Store, Name> | EntityId) => void;
 } & {
   [Name in Names as `remove${Capitalize<PluralOf<Configs, Name>>}`]: (
-    idsOrPredicate: EntityId[] | EntityPredicate<EntityOf<Store, Name>>,
+    entitiesOrPredicate: (EntityOf<Store, Name> | EntityId)[] | EntityPredicate<EntityOf<Store, Name>>,
   ) => void;
 } & {
   [Name in Names as `removeAll${Capitalize<PluralOf<Configs, Name>>}`]: () => void;
 } & {
   [Name in Names as `${Name}ById`]: (id: EntityId) => EntityOf<Store, Name> | undefined;
 } & {
-  [Name in Names as `has${Capitalize<Name>}`]: (id: EntityId) => boolean;
+  [Name in Names as `has${Capitalize<Name>}`]: (entity: EntityOf<Store, Name> | EntityId) => boolean;
 };
 
 type EntityAccessorsOutput<Store, Configs extends readonly EntityAccessorConfig[], Names extends string> = {
@@ -134,7 +137,7 @@ type EntityAccessorsOutput<Store, Configs extends readonly EntityAccessorConfig[
  * );
  * // From withEntities: bookEntityMap() · bookIds() · bookEntities()
  * // Added signals:     books() · bookMap() · bookCount()
- * // Lookups:           bookById(id) · hasBook(id)
+ * // Lookups:           bookById(id) · hasBook(book | id)
  * // Add/set/upsert:    addBook(book) · addBooks(books) · prependBook · prependBooks
  * //                    setBook · setBooks · setAllBooks · upsertBook · upsertBooks
  * // Update:            updateBook(id, changes) · updateBooks(ids | predicate, changes) · updateAllBooks(changes)
@@ -197,6 +200,10 @@ export const withEntityAccessors = <
         const pluralCap = capitalize(pluralFor(collection));
         const entityMapKey = `${collection}EntityMap`;
         const updaterConfig = { collection, selectId: selectIdFor(collection) } as any;
+        const resolveRef = toRefResolver(toIdReader(selectIdFor(collection), 'id'));
+        // An update/remove target may be an entity or an id; a predicate passes straight through.
+        const resolveTargets = (entitiesOrPredicate: unknown): unknown =>
+          Array.isArray(entitiesOrPredicate) ? entitiesOrPredicate.map(resolveRef) : entitiesOrPredicate;
 
         methods[`add${cap}`] = (entity: unknown) => patchState(innerStore, addEntity(entity, updaterConfig));
         methods[`add${pluralCap}`] = (entities: unknown[]) =>
@@ -212,26 +219,27 @@ export const withEntityAccessors = <
         methods[`upsert${cap}`] = (entity: unknown) => patchState(innerStore, upsertEntity(entity, updaterConfig));
         methods[`upsert${pluralCap}`] = (entities: unknown[]) =>
           patchState(innerStore, upsertEntities(entities, updaterConfig));
-        methods[`update${cap}`] = (id: EntityId, changes: unknown) =>
-          patchState(innerStore, updateEntity({ id, changes } as any, updaterConfig));
-        methods[`update${pluralCap}`] = (idsOrPredicate: EntityId[] | EntityPredicate<unknown>, changes: unknown) =>
+        methods[`update${cap}`] = (ref: unknown, changes: unknown) =>
+          patchState(innerStore, updateEntity({ id: resolveRef(ref), changes } as any, updaterConfig));
+        methods[`update${pluralCap}`] = (entitiesOrPredicate: unknown, changes: unknown) =>
           patchState(
             innerStore,
             updateEntities(
-              (Array.isArray(idsOrPredicate)
-                ? { ids: idsOrPredicate, changes }
-                : { predicate: idsOrPredicate, changes }) as any,
+              (Array.isArray(entitiesOrPredicate)
+                ? { ids: resolveTargets(entitiesOrPredicate), changes }
+                : { predicate: entitiesOrPredicate, changes }) as any,
               updaterConfig,
             ),
           );
         methods[`updateAll${pluralCap}`] = (changes: unknown) =>
           patchState(innerStore, updateAllEntities(changes as any, updaterConfig));
-        methods[`remove${cap}`] = (id: EntityId) => patchState(innerStore, removeEntity(id, updaterConfig));
-        methods[`remove${pluralCap}`] = (idsOrPredicate: EntityId[] | EntityPredicate<unknown>) =>
-          patchState(innerStore, removeEntities(idsOrPredicate as any, updaterConfig));
+        methods[`remove${cap}`] = (ref: unknown) =>
+          patchState(innerStore, removeEntity(resolveRef(ref) as EntityId, updaterConfig));
+        methods[`remove${pluralCap}`] = (entitiesOrPredicate: unknown) =>
+          patchState(innerStore, removeEntities(resolveTargets(entitiesOrPredicate) as any, updaterConfig));
         methods[`removeAll${pluralCap}`] = () => patchState(innerStore, removeAllEntities(updaterConfig));
         methods[`${collection}ById`] = (id: EntityId) => innerStore[entityMapKey]()[id];
-        methods[`has${cap}`] = (id: EntityId) => innerStore[entityMapKey]()[id] !== undefined;
+        methods[`has${cap}`] = (ref: unknown) => innerStore[entityMapKey]()[resolveRef(ref) as EntityId] !== undefined;
       });
 
       return methods;

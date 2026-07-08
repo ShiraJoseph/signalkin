@@ -20,16 +20,28 @@ interface Row {
   id: string;
 }
 
+interface Student {
+  id: string;
+  groupIds: string[];
+}
+
+interface Group {
+  id: string;
+}
+
 const libraryConfig = entityConfig({ entity: type<Library>(), collection: 'library' });
 const bookConfig = entityConfig({ entity: type<Book>(), collection: 'book' });
 const rowConfig = entityConfig({ entity: type<Row>(), collection: 'row' });
+const studentConfig = entityConfig({ entity: type<Student>(), collection: 'student' });
+const groupConfig = entityConfig({ entity: type<Group>(), collection: 'group' });
 
 const LibraryStore = signalStore(
   { providedIn: 'root' },
   withEntities(libraryConfig),
   withEntities(bookConfig),
   withEntityAccessors({ ...libraryConfig, plural: 'libraries' }, bookConfig),
-  withEntityRelationship({ name: 'library', count: 1 }, { name: 'book', count: 'many' }),
+  // Spreading the entityConfig works now that a side keys on `collection`.
+  withEntityRelationship({ ...libraryConfig, count: 1 }, { collection: 'book', count: 'many' }),
 );
 
 const ManualStore = signalStore(
@@ -37,7 +49,7 @@ const ManualStore = signalStore(
   withEntities(libraryConfig),
   withEntities(bookConfig),
   withEntityAccessors({ ...libraryConfig, plural: 'libraries' }, bookConfig),
-  withEntityRelationship({ name: 'library', count: 1 }, { name: 'book', count: 'many' }, { autoIndex: false }),
+  withEntityRelationship({ collection: 'library', count: 1 }, { collection: 'book', count: 'many' }, { autoIndex: false }),
 );
 
 const RowStore = signalStore(
@@ -45,7 +57,15 @@ const RowStore = signalStore(
   withEntities(rowConfig),
   withEntities(bookConfig),
   withEntityAccessors(),
-  withEntityRelationship({ name: 'row', count: 2 }, { name: 'book', count: 'many' }),
+  withEntityRelationship({ collection: 'row', count: 2 }, { collection: 'book', count: 'many' }),
+);
+
+const GroupStore = signalStore(
+  { providedIn: 'root' },
+  withEntities(studentConfig),
+  withEntities(groupConfig),
+  withEntityAccessors(),
+  withEntityRelationship({ collection: 'student', count: 'many' }, { collection: 'group', count: 'many' }),
 );
 
 const central: Library = { id: 'l1', name: 'Central' };
@@ -67,50 +87,73 @@ describe('withEntityRelationship', () => {
 
     it('indexes entities by their foreign key, both directions', () => {
       expect(store.booksByLibrary(central)).toEqual([dune, hobbit]);
-      expect(store.booksByLibraryId('l2')).toEqual([emma]);
-      expect(store.bookIdsByLibraryId('l1')).toEqual(['b1', 'b2']);
+      expect(store.booksByLibrary('l2')).toEqual([emma]);
+      expect(store.bookIdsByLibrary('l1')).toEqual(['b1', 'b2']);
       expect(store.libraryByBook(dune)).toEqual(central);
-      expect(store.libraryByBookId('b3')).toEqual(eastside);
-      expect(store.libraryIdByBookId('b1')).toBe('l1');
+      expect(store.libraryByBook('b3')).toEqual(eastside);
+      expect(store.libraryIdByBook('b1')).toBe('l1');
+    });
+
+    it('accepts an entity or its id in the same lookup', () => {
+      expect(store.booksByLibrary('l1')).toEqual(store.booksByLibrary(central));
+      expect(store.libraryByBook('b1')).toEqual(store.libraryByBook(dune));
     });
 
     it('skips entities without the foreign key', () => {
-      expect(store.libraryByBookId('b4')).toBeUndefined();
-      expect(store.booksByLibraryId('l1')).not.toContain(strayBook);
+      expect(store.libraryByBook('b4')).toBeUndefined();
+      expect(store.booksByLibrary('l1')).not.toContain(strayBook);
     });
 
-    it('answers has and count checks', () => {
+    it('answers has and count checks (entity or id)', () => {
       expect(store.libraryHasBook('l1', 'b1')).toBe(true);
+      expect(store.libraryHasBook(central, dune)).toBe(true);
       expect(store.libraryHasBook('l2', 'b1')).toBe(false);
       expect(store.bookCountByLibrary('l1')).toBe(2);
       expect(store.libraryCountByBook('b3')).toBe(1);
     });
 
+    it('finds the single parent from a full child-set (composite keyed by the many side)', () => {
+      expect(store.libraryByBooks('b1', 'b2')).toEqual(central);
+      expect(store.libraryByBooks(dune, hobbit)).toEqual(central);
+      expect(store.libraryByBooks('b3')).toEqual(eastside);
+      expect(store.libraryIdByBooks('b2', 'b1')).toBe('l1');
+      // A partial set is not the key.
+      expect(store.libraryByBooks('b1')).toBeUndefined();
+    });
+
     it('re-points when the foreign key changes', () => {
       store.updateBook('b1', { libraryId: 'l2' });
-      expect(store.libraryIdByBookId('b1')).toBe('l2');
+      expect(store.libraryIdByBook('b1')).toBe('l2');
       expect(store.bookCountByLibrary('l1')).toBe(1);
     });
 
     it('prunes removed entities from lookups', () => {
       store.removeBook('b1');
-      expect(store.booksByLibraryId('l1')).toEqual([hobbit]);
+      expect(store.booksByLibrary('l1')).toEqual([hobbit]);
 
       store.removeLibrary('l2');
-      expect(store.libraryByBookId('b3')).toBeUndefined();
+      expect(store.libraryByBook('b3')).toBeUndefined();
     });
 
     it('links a foreign-key-less entity manually', () => {
       store.addBookToLibrary('l1', 'b4');
-      expect(store.booksByLibraryId('l1')).toContain(strayBook);
+      expect(store.booksByLibrary('l1')).toContain(strayBook);
 
       store.removeBookFromLibrary('l1', 'b4');
-      expect(store.booksByLibraryId('l1')).not.toContain(strayBook);
+      expect(store.booksByLibrary('l1')).not.toContain(strayBook);
 
       store.addBookToLibrary('l1', 'b4');
       store.moveBookToLibrary('b4', 'l2');
-      expect(store.libraryIdByBookId('b4')).toBe('l2');
+      expect(store.libraryIdByBook('b4')).toBe('l2');
       expect(store.libraryHasBook('l1', 'b4')).toBe(false);
+    });
+
+    it('accepts entities (not just ids) in the mutations', () => {
+      store.addBookToLibrary(eastside, strayBook);
+      expect(store.libraryHasBook(eastside, strayBook)).toBe(true);
+
+      store.moveBookToLibrary(strayBook, central);
+      expect(store.libraryIdByBook('b4')).toBe('l1');
     });
   });
 
@@ -120,10 +163,10 @@ describe('withEntityRelationship', () => {
       store.setAllLibraries([central]);
       store.setAllBooks([dune]);
 
-      expect(store.booksByLibraryId('l1')).toEqual([]);
+      expect(store.booksByLibrary('l1')).toEqual([]);
 
       store.addBookToLibrary('l1', 'b1');
-      expect(store.booksByLibraryId('l1')).toEqual([dune]);
+      expect(store.booksByLibrary('l1')).toEqual([dune]);
     });
   });
 
@@ -133,7 +176,7 @@ describe('withEntityRelationship', () => {
       withEntities(libraryConfig),
       withEntities(bookConfig),
       withEntityAccessors({ ...libraryConfig, plural: 'libraries' }, bookConfig),
-      withEntityRelationship({ name: 'library', count: 1 }, { name: 'book', count: 'many' }),
+      withEntityRelationship({ collection: 'library', count: 1 }, { collection: 'book', count: 'many' }),
     );
 
     let store: InstanceType<typeof SyncStore>;
@@ -147,15 +190,15 @@ describe('withEntityRelationship', () => {
     it('makes remove stick for an FK-derived link by clearing the foreign key', () => {
       store.removeBookFromLibrary('l1', 'b1');
       expect(store.bookById('b1')?.libraryId).toBeUndefined();
-      expect(store.libraryByBookId('b1')).toBeUndefined();
-      expect(store.booksByLibraryId('l1')).toEqual([hobbit]);
+      expect(store.libraryByBook('b1')).toBeUndefined();
+      expect(store.booksByLibrary('l1')).toEqual([hobbit]);
     });
 
     it('re-points the foreign key on move', () => {
       store.moveBookToLibrary('b1', 'l2');
       expect(store.bookById('b1')?.libraryId).toBe('l2');
-      expect(store.libraryIdByBookId('b1')).toBe('l2');
-      expect(store.booksByLibraryId('l1')).toEqual([hobbit]);
+      expect(store.libraryIdByBook('b1')).toBe('l2');
+      expect(store.booksByLibrary('l1')).toEqual([hobbit]);
     });
 
     it('drops the id from an array foreign key on remove', () => {
@@ -164,7 +207,7 @@ describe('withEntityRelationship', () => {
         withEntities(rowConfig),
         withEntities(bookConfig),
         withEntityAccessors(),
-        withEntityRelationship({ name: 'row', count: 2 }, { name: 'book', count: 'many' }),
+        withEntityRelationship({ collection: 'row', count: 2 }, { collection: 'book', count: 'many' }),
       );
       const arrayStore = TestBed.inject(ArraySyncStore);
       arrayStore.setAllRows([{ id: 'r1' }, { id: 'r2' }]);
@@ -172,7 +215,7 @@ describe('withEntityRelationship', () => {
 
       arrayStore.removeBookFromRow('r1', 'b9');
       expect(arrayStore.bookById('b9')?.rowIds).toEqual(['r2']);
-      expect(arrayStore.rowsByBookId('b9')).toEqual([{ id: 'r2' }]);
+      expect(arrayStore.rowsByBook('b9')).toEqual([{ id: 'r2' }]);
     });
 
     it('skips a getter-based selectForeignId side instead of writing', () => {
@@ -182,8 +225,8 @@ describe('withEntityRelationship', () => {
         withEntities(bookConfig),
         withEntityAccessors({ ...libraryConfig, plural: 'libraries' }, bookConfig),
         withEntityRelationship(
-          { name: 'library', count: 1 },
-          { name: 'book', count: 'many', selectForeignId: (book) => book.libraryId },
+          { collection: 'library', count: 1 },
+          { collection: 'book', count: 'many', selectForeignId: (book) => book.libraryId },
         ),
       );
       const getterStore = TestBed.inject(GetterStore);
@@ -192,7 +235,7 @@ describe('withEntityRelationship', () => {
 
       getterStore.removeBookFromLibrary('l1', 'b1');
       expect(getterStore.bookById('b1')?.libraryId).toBe('l1');
-      expect(getterStore.libraryIdByBookId('b1')).toBe('l1');
+      expect(getterStore.libraryIdByBook('b1')).toBe('l1');
     });
 
     it('never writes entities when syncForeignKeys is false', () => {
@@ -202,8 +245,8 @@ describe('withEntityRelationship', () => {
         withEntities(bookConfig),
         withEntityAccessors({ ...libraryConfig, plural: 'libraries' }, bookConfig),
         withEntityRelationship(
-          { name: 'library', count: 1 },
-          { name: 'book', count: 'many' },
+          { collection: 'library', count: 1 },
+          { collection: 'book', count: 'many' },
           { syncForeignKeys: false },
         ),
       );
@@ -213,11 +256,11 @@ describe('withEntityRelationship', () => {
 
       optOutStore.removeBookFromLibrary('l1', 'b1');
       expect(optOutStore.bookById('b1')?.libraryId).toBe('l1');
-      expect(optOutStore.libraryIdByBookId('b1')).toBe('l1');
+      expect(optOutStore.libraryIdByBook('b1')).toBe('l1');
     });
   });
 
-  describe('composite set-lookup (fixed count 2)', () => {
+  describe('composite set-lookup (fixed count 2 -> single)', () => {
     it('finds the single entity pinned by a full id-set, order-insensitively', () => {
       const store = TestBed.inject(RowStore);
       const frontRow: Row = { id: 'r1' };
@@ -227,10 +270,56 @@ describe('withEntityRelationship', () => {
       store.setAllBooks([crossShelved]);
 
       expect(store.rowsByBook(crossShelved)).toEqual([frontRow, backRow]);
-      expect(store.bookByRowIds('r2', 'r1')).toEqual(crossShelved);
+      expect(store.bookByRows('r2', 'r1')).toEqual(crossShelved);
       expect(store.bookByRows(backRow, frontRow)).toEqual(crossShelved);
-      expect(store.bookIdByRowIds('r1', 'r2')).toBe('b9');
-      expect(store.bookByRowIds('r1')).toBeUndefined();
+      expect(store.bookIdByRows('r1', 'r2')).toBe('b9');
+      expect(store.bookByRows('r1')).toBeUndefined();
+    });
+
+    it('exposes the other direction as an array (books keyed by row set)', () => {
+      const store = TestBed.inject(RowStore);
+      store.setAllRows([{ id: 'r1' }, { id: 'r2' }]);
+      store.setAllBooks([{ id: 'b9', title: 'Everywhere', rowIds: ['r1', 'r2'] }]);
+
+      // rowsByBooks keys by a full book-set and returns every matching row.
+      expect(store.rowsByBooks('b9')).toEqual([{ id: 'r1' }, { id: 'r2' }]);
+      expect(store.rowIdsByBooks('b9')).toEqual(['r1', 'r2']);
+    });
+  });
+
+  describe('composite set-lookup (many:many -> array of every match)', () => {
+    it('returns ALL entities sharing the exact id-set', () => {
+      const store = TestBed.inject(GroupStore);
+      store.setAllGroups([{ id: 'g1' }, { id: 'g2' }]);
+      store.setAllStudents([
+        { id: 's1', groupIds: ['g1', 'g2'] },
+        { id: 's2', groupIds: ['g1', 'g2'] },
+        { id: 's3', groupIds: ['g1'] },
+      ]);
+
+      expect(store.studentsByGroups('g1', 'g2')).toEqual([
+        { id: 's1', groupIds: ['g1', 'g2'] },
+        { id: 's2', groupIds: ['g1', 'g2'] },
+      ]);
+      expect(store.studentIdsByGroups('g2', 'g1')).toEqual(['s1', 's2']);
+      expect(store.studentsByGroups('g1')).toEqual([{ id: 's3', groupIds: ['g1'] }]);
+      expect(store.groupsByStudents('s1', 's2', 's3')).toEqual([{ id: 'g1' }]);
+    });
+  });
+
+  describe('compositeLookups: false', () => {
+    it('does not generate the set-lookups', () => {
+      const NoCompositeStore = signalStore(
+        { providedIn: 'root' },
+        withEntities(rowConfig),
+        withEntities(bookConfig),
+        withEntityAccessors(),
+        withEntityRelationship({ collection: 'row', count: 2 }, { collection: 'book', count: 'many' }, { compositeLookups: false }),
+      );
+      const store = TestBed.inject(NoCompositeStore);
+
+      expect((store as any).bookByRows).toBeUndefined();
+      expect((store as any).rowsByBooks).toBeUndefined();
     });
   });
 });

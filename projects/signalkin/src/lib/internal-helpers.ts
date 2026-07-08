@@ -20,6 +20,15 @@ export const toIdReader = (
 };
 
 /**
+ * Resolves a lookup argument that may be an entity OR its id down to the id: an object is read
+ * through `readId`, anything else (a raw id) passes through. Lets every lookup accept `Entity | EntityId`.
+ */
+export const toRefResolver = (
+  readId: (entity: any) => EntityId | undefined,
+): ((ref: any) => EntityId | undefined) => (ref: any) =>
+  ref !== null && typeof ref === 'object' ? readId(ref) : ref;
+
+/**
  * A foreign-key reader that always yields an array of usable ids: a scalar id becomes a one-item
  * array, an array (a plural FK like `aisleIds`) passes through, and a missing/empty key yields `[]`.
  * This lets a `>1` side carry an array foreign key without the caller normalizing.

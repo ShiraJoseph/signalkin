@@ -104,6 +104,7 @@ describe('withEntityAccessors', () => {
     expect(store.bookById('b2')).toEqual(hobbit);
     expect(store.bookById('nope')).toBeUndefined();
     expect(store.hasBook('b1')).toBe(true);
+    expect(store.hasBook(hobbit)).toBe(true);
     expect(store.hasBook('nope')).toBe(false);
   });
 
@@ -177,6 +178,19 @@ describe('withEntityAccessors', () => {
     expect(store.bookIds()).toEqual(['b2']);
 
     store.removeAllBooks();
+    expect(store.bookCount()).toBe(0);
+  });
+
+  it('accepts entities (not just ids) in update / remove', () => {
+    store.setAllBooks([dune, hobbit]);
+
+    store.updateBook(dune, { pages: 42 });
+    expect(store.bookById('b1')?.pages).toBe(42);
+
+    store.removeBook(hobbit);
+    expect(store.hasBook('b2')).toBe(false);
+
+    store.removeBooks([dune]);
     expect(store.bookCount()).toBe(0);
   });
 

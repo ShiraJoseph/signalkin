@@ -5,13 +5,13 @@ import {
   withMethods,
 } from '@ngrx/signals';
 import { EntityId } from '@ngrx/signals/entities';
-import { capitalize, hasId, toIdReader } from './internal-helpers';
+import { capitalize, hasId, toIdReader, toRefResolver } from './internal-helpers';
 import { EntityOf, IdAccessor, RequiredEntityStore } from './types';
 
 /**
  * The read-only lookups a transitive relationship generates, both directions, arrays throughout
- * (a chained walk can reach more than one of either endpoint). Accepts an entity or its id;
- * returns the endpoint entities or their ids.
+ * (a chained walk can reach more than one of either endpoint). Each lookup accepts the endpoint
+ * entity OR its id, and returns the far endpoint entities or their ids.
  */
 type TransitiveOutput<
   FromEntity,
@@ -26,21 +26,13 @@ type TransitiveOutput<
   state: {};
   props: {};
   methods: {
-    [Key in `${ToPlural}By${Capitalize<FromName>}`]: (from: FromEntity) => ToEntity[];
+    [Key in `${ToPlural}By${Capitalize<FromName>}`]: (from: FromEntity | EntityId) => ToEntity[];
   } & {
-    [Key in `${ToPlural}By${Capitalize<FromName>}Id`]: (fromId: EntityId) => ToEntity[];
+    [Key in `${ToName}IdsBy${Capitalize<FromName>}`]: (from: FromEntity | EntityId) => ToId[];
   } & {
-    [Key in `${ToName}IdsBy${Capitalize<FromName>}`]: (from: FromEntity) => ToId[];
+    [Key in `${FromPlural}By${Capitalize<ToName>}`]: (to: ToEntity | EntityId) => FromEntity[];
   } & {
-    [Key in `${ToName}IdsBy${Capitalize<FromName>}Id`]: (fromId: EntityId) => ToId[];
-  } & {
-    [Key in `${FromPlural}By${Capitalize<ToName>}`]: (to: ToEntity) => FromEntity[];
-  } & {
-    [Key in `${FromPlural}By${Capitalize<ToName>}Id`]: (toId: EntityId) => FromEntity[];
-  } & {
-    [Key in `${FromName}IdsBy${Capitalize<ToName>}`]: (to: ToEntity) => FromId[];
-  } & {
-    [Key in `${FromName}IdsBy${Capitalize<ToName>}Id`]: (toId: EntityId) => FromId[];
+    [Key in `${FromName}IdsBy${Capitalize<ToName>}`]: (to: ToEntity | EntityId) => FromId[];
   };
 };
 
@@ -68,12 +60,12 @@ type TransitiveOutput<
  * @example
  * signalStore(
  *   withEntities(libraryConfig), withEntities(shelfConfig), withEntities(bookConfig),
- *   withEntityRelationship({ name: 'library', count: 1, plural: 'libraries' }, { name: 'shelf', count: 'many' }),
- *   withEntityRelationship({ name: 'shelf', count: 1 }, { name: 'book', count: 'many' }),
+ *   withEntityRelationship({ collection: 'library', count: 1, plural: 'libraries' }, { collection: 'shelf', count: 'many' }),
+ *   withEntityRelationship({ collection: 'shelf', count: 1 }, { collection: 'book', count: 'many' }),
  *   withTransitiveRelationship({ from: 'library', to: 'book', through: 'shelf', fromPlural: 'libraries' }),
  * );
- * // booksByLibrary(library) / booksByLibraryId(id) -> Book[]     (also bookIdsByLibrary / ...Id -> id[])
- * // librariesByBook(book) / librariesByBookId(id) -> Library[]   (also libraryIdsByBook / ...Id -> id[])
+ * // booksByLibrary(library | id) -> Book[]     (also bookIdsByLibrary(library | id) -> id[])
+ * // librariesByBook(book | id) -> Library[]    (also libraryIdsByBook(book | id) -> id[])
  */
 export const withTransitiveRelationship = <
   FromName extends string,
@@ -140,16 +132,14 @@ export const withTransitiveRelationship = <
 
       const toIdsByFrom = (fromId: EntityId | undefined): EntityId[] => walk(fromId, forwardMapKeys);
       const fromIdsByTo = (toId: EntityId | undefined): EntityId[] => walk(toId, reverseMapKeys);
+      const resolveFromRef = toRefResolver(readFromId);
+      const resolveToRef = toRefResolver(readToId);
 
       const methods: Record<string, (...args: any[]) => unknown> = {
-        [`${toPlural}By${fromCap}`]: (fromEntity: any) => resolve(toIdsByFrom(readFromId(fromEntity)), toEntityMapKey),
-        [`${toPlural}By${fromCap}Id`]: (fromId: EntityId) => resolve(toIdsByFrom(fromId), toEntityMapKey),
-        [`${to}IdsBy${fromCap}`]: (fromEntity: any) => toIdsByFrom(readFromId(fromEntity)),
-        [`${to}IdsBy${fromCap}Id`]: (fromId: EntityId) => toIdsByFrom(fromId),
-        [`${fromPlural}By${toCap}`]: (toEntity: any) => resolve(fromIdsByTo(readToId(toEntity)), fromEntityMapKey),
-        [`${fromPlural}By${toCap}Id`]: (toId: EntityId) => resolve(fromIdsByTo(toId), fromEntityMapKey),
-        [`${from}IdsBy${toCap}`]: (toEntity: any) => fromIdsByTo(readToId(toEntity)),
-        [`${from}IdsBy${toCap}Id`]: (toId: EntityId) => fromIdsByTo(toId),
+        [`${toPlural}By${fromCap}`]: (from: any) => resolve(toIdsByFrom(resolveFromRef(from)), toEntityMapKey),
+        [`${to}IdsBy${fromCap}`]: (from: any) => toIdsByFrom(resolveFromRef(from)),
+        [`${fromPlural}By${toCap}`]: (to: any) => resolve(fromIdsByTo(resolveToRef(to)), fromEntityMapKey),
+        [`${from}IdsBy${toCap}`]: (to: any) => fromIdsByTo(resolveToRef(to)),
       };
 
       return methods;
