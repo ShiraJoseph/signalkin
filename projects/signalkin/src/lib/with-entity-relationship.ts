@@ -439,7 +439,9 @@ export const withEntityRelationship = <
 
       // A set of the input side's ids keys the other side. Collect ALL return-entities per set so the
       // lookup can hand back every match; shape to single or array by the same rule as the type layer.
-      const keyOf = (ids: EntityId[]): string => ids.map(String).sort().join('|');
+      // JSON-encode the sorted ids so the key is collision-proof: an id that contains a plain
+      // delimiter (`a|b`) can't merge with another set, since every element is quoted and escaped.
+      const keyOf = (ids: EntityId[]): string => JSON.stringify(ids.map(String).sort());
       const isFixedCount = (count: Cardinality): boolean => typeof count === 'number' && count >= 2;
       const isMulti = (count: Cardinality): boolean => count !== 1;
 

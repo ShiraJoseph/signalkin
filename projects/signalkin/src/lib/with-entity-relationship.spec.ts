@@ -305,6 +305,19 @@ describe('withEntityRelationship', () => {
       expect(store.studentsByGroups('g1')).toEqual([{ id: 's3', groupIds: ['g1'] }]);
       expect(store.groupsByStudents('s1', 's2', 's3')).toEqual([{ id: 'g1' }]);
     });
+
+    it('does not collide when an id contains the delimiter character', () => {
+      const store = TestBed.inject(GroupStore);
+      // Under a naive join('|') these two sets both key to "a|b"; JSON keys keep them distinct.
+      store.setAllGroups([{ id: 'a|b' }, { id: 'a' }, { id: 'b' }]);
+      store.setAllStudents([
+        { id: 's1', groupIds: ['a|b'] },
+        { id: 's2', groupIds: ['a', 'b'] },
+      ]);
+
+      expect(store.studentsByGroups('a|b')).toEqual([{ id: 's1', groupIds: ['a|b'] }]);
+      expect(store.studentsByGroups('a', 'b')).toEqual([{ id: 's2', groupIds: ['a', 'b'] }]);
+    });
   });
 
   describe('compositeLookups: false', () => {
