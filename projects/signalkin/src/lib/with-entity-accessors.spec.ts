@@ -127,6 +127,24 @@ describe('withEntityAccessors', () => {
     expect(store.bookIds()[0]).toBe('b4');
   });
 
+  it('reorders the collection via swap, full reorder, and move-to-index', () => {
+    store.addBook(emma); // [b1, b2, b3]
+
+    store.swapBooks('b1', 'b3');
+    expect(store.bookIds()).toEqual(['b3', 'b2', 'b1']);
+
+    store.moveBookToIndex('b3', 2);
+    expect(store.bookIds()).toEqual(['b2', 'b1', 'b3']);
+
+    store.reorderBooks([dune, hobbit, emma]); // full set as entities
+    expect(store.bookIds()).toEqual(['b1', 'b2', 'b3']);
+  });
+
+  it('ignores an incomplete collection reorder (strict full set)', () => {
+    store.reorderBooks([hobbit]); // missing dune
+    expect(store.bookIds()).toEqual(['b1', 'b2']);
+  });
+
   it('replaces with setBook and the whole collection with setAllBooks', () => {
     store.setBook({ id: 'b1', title: 'Dune Messiah', pages: 256 });
     expect(store.bookById('b1')?.title).toBe('Dune Messiah');

@@ -4,9 +4,9 @@
  * the sandbox build.
  */
 import { inject } from '@angular/core';
-import { patchState, signalStore, type, withComputed, withMethods, withState } from '@ngrx/signals';
+import { signalStore, type } from '@ngrx/signals';
 import { entityConfig, withEntities } from '@ngrx/signals/entities';
-import { withEntityAccessors, withEntityRelationship, withTransitiveRelationship } from 'signalkin';
+import { withEntityRelationship } from 'signalkin';
 import { Book, DemoStore, Library, LibrarySystem } from './demo.store';
 
 const assertType = <T>(value: T): T => value;
@@ -42,101 +42,21 @@ export const brandedProbe = (): void => {
   assertType<WidgetId | undefined>(store.widgetIdByGadget('g-1'));
 };
 
-// REPRO of Shira's data.store: spreading a config that carries a custom selectId into the side.
-const SpreadStore = signalStore(
+// A string-key selectId keeps the brand even when the side is spread from an entityConfig: ngrx widens
+// the config's getter to EntityId, but naming the property ('wid'/'gid') re-reads its branded type.
+const StringKeyStore = signalStore(
   withEntities(widgetConfig),
   withEntities(gadgetConfig),
-  withEntityRelationship({ ...widgetConfig, count: 1 }, { ...gadgetConfig, count: 'many' }),
+  withEntityRelationship(
+    { ...widgetConfig, count: 1, selectId: 'wid' },
+    { ...gadgetConfig, count: 'many', selectId: 'gid' },
+  ),
 );
 
-export const spreadProbe = (): void => {
-  const store = inject(SpreadStore);
-  assertType<Gadget[]>(store.gadgetsByWidget('w-1'));
-};
-
-// REPRO 2: Shira's DataStore, copied byte-for-byte from LogicSolver.
-type UUID = `${string}-${string}-${string}-${string}-${string}`;
-type CellId = UUID;
-type OptionId = UUID;
-type FeatureId = UUID;
-
-class Feature {
-  public id: number;
-  id2: FeatureId;
-  public name = '';
-  public optionsIds?: number[] = [];
-
-  constructor() {
-    this.id = Math.random();
-    this.id2 = crypto.randomUUID();
-  }
-}
-
-class OptionEntity {
-  public id: number;
-  id2: OptionId;
-  public name = '';
-  public featureId?: number;
-  featureId2?: FeatureId;
-
-  constructor() {
-    this.id = Math.random();
-    this.id2 = crypto.randomUUID();
-  }
-}
-
-class Cell {
-  public id: number;
-  id2: CellId;
-  public optionIds?: Array<OptionId>;
-  public leftOptionId?: number;
-  public topOptionId?: number;
-  public value = '';
-
-  constructor() {
-    this.id = Math.random();
-    this.id2 = crypto.randomUUID();
-  }
-}
-
-const toEntityConfig = <T extends { id2: UUID }, C extends string>(collection: C) =>
-  entityConfig({
-    entity: type<T>(),
-    collection,
-    selectId: (entity) => entity.id2,
-  });
-
-const featureConfig = toEntityConfig<Feature, 'feature'>('feature');
-const optionConfig = toEntityConfig<OptionEntity, 'option'>('option');
-const cellConfig = toEntityConfig<Cell, 'cell'>('cell');
-
-interface DataState {
-  optionCountPerFeature: number;
-}
-
-const DataStoreRepro = signalStore(
-  { providedIn: 'root' },
-  withState<DataState>({ optionCountPerFeature: 0 }),
-  withEntities(featureConfig),
-  withEntities(optionConfig),
-  withEntities(cellConfig),
-  withEntityAccessors(),
-  withEntityRelationship({ ...featureConfig, count: 1 }, { ...optionConfig, count: 'many' }),
-  withEntityRelationship({ ...optionConfig, count: 2 }, { ...cellConfig, count: 'many' }),
-  withTransitiveRelationship({ from: 'feature', to: 'cell', through: 'option' }),
-  withMethods((store) => ({
-    setOptionsCountPerFeature: (count: number) => {
-      patchState(store, { optionCountPerFeature: count });
-    },
-  })),
-
-  withComputed(({ optionCountPerFeature }) => ({
-    optionsCount: () => optionCountPerFeature(),
-  })),
-);
-
-export const herProbe = (): void => {
-  inject(DataStoreRepro);
+export const stringKeyProbe = (): void => {
+  const store = inject(StringKeyStore);
+  assertType<GadgetId[]>(store.gadgetIdsByWidget('w-1'));
+  assertType<WidgetId | undefined>(store.widgetIdByGadget('g-1'));
 };
 
 export const typecheckProbe = (): void => {
@@ -159,6 +79,21 @@ export const typecheckProbe = (): void => {
   store.removeBookFromLibrary('l1', 'b1');
   store.moveBookToLibrary('b1', 'l2');
   store.moveBookToLibrary(dune, central);
+
+  // indexOf + ordering, generated in the single-owner direction (a book has one library).
+  assertType<number>(store.indexOfLibraryBook('b1'));
+  assertType<number>(store.indexOfLibraryBook(dune));
+  store.swapLibraryBooks('b1', 'b2');
+  store.swapLibraryBooks(dune, dune);
+  store.reorderLibraryBooks(['b1', 'b2']);
+  store.reorderLibraryBooks([dune]);
+  store.moveLibraryBookToIndex('b1', 0);
+  store.moveLibraryBookToIndex(dune, 1);
+
+  // Collection-order ordering from the accessors, on any collection.
+  store.swapBooks('b1', 'b2');
+  store.reorderBooks([dune]);
+  store.moveBookToIndex(dune, 0);
 
   // Transitive relationship: endpoints resolve through the intermediary.
   assertType<Book[]>(store.booksByLibrarySystem(citywide));

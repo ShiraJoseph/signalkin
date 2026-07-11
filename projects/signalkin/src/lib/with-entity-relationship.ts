@@ -31,6 +31,7 @@ import {
   IdLead,
   IdOf,
   IsMulti,
+  IsSingle,
   Lead,
   Related,
   RelationshipOptions,
@@ -144,6 +145,63 @@ type MutationMethods<FromEntity, FromName extends string, ToEntity, ToName exten
   ) => void;
 };
 
+/**
+ * The position of a member entity within its owner's ordered related list (as returned by the owner's
+ * get-by lookup), or -1 when the member is not linked. Takes only the member — the owner is the single
+ * entity the member belongs to. Generated only where the member has exactly one owner (the owner side
+ * is count 1) and that owner holds many members (the member side is `'many'` or a fixed count 2+); a
+ * many-to-many has no single owner to infer, so it gets none. The member is passed as the entity or its id.
+ */
+type IndexOfMethod<
+  OwnerName extends string,
+  OwnerCount extends Cardinality,
+  MemberName extends string,
+  MemberEntity,
+  MemberCount extends Cardinality,
+> = IsSingle<OwnerCount> extends true
+  ? IsMulti<MemberCount> extends true
+    ? {
+        [Key in `indexOf${Capitalize<OwnerName>}${Capitalize<MemberName>}`]: (
+          member: MemberEntity | EntityId,
+        ) => number;
+      }
+    : {}
+  : {};
+
+/**
+ * Ordering mutations for a member within its owner's related list: swap two members, set the full
+ * order, or move one to an index. Generated in the same direction as {@link IndexOfMethod} — only where
+ * the member has a single owner (owner side is count 1) that holds many members. `reorder` takes the
+ * complete set of that owner's members and no-ops (with a warning) on an incomplete or foreign list.
+ * Members are passed as the entity or its id.
+ */
+type OrderingMethods<
+  OwnerName extends string,
+  OwnerCount extends Cardinality,
+  MemberName extends string,
+  MemberPlural extends string,
+  MemberEntity,
+  MemberCount extends Cardinality,
+> = IsSingle<OwnerCount> extends true
+  ? IsMulti<MemberCount> extends true
+    ? {
+        [Key in `swap${Capitalize<OwnerName>}${Capitalize<MemberPlural>}`]: (
+          memberA: MemberEntity | EntityId,
+          memberB: MemberEntity | EntityId,
+        ) => void;
+      } & {
+        [Key in `reorder${Capitalize<OwnerName>}${Capitalize<MemberPlural>}`]: (
+          orderedMembers: (MemberEntity | EntityId)[],
+        ) => void;
+      } & {
+        [Key in `move${Capitalize<OwnerName>}${Capitalize<MemberName>}ToIndex`]: (
+          member: MemberEntity | EntityId,
+          index: number,
+        ) => void;
+      }
+    : {}
+  : {};
+
 type RelationshipOutput<
   FromEntity,
   FromName extends string,
@@ -162,6 +220,10 @@ type RelationshipOutput<
     // from's id-set keys the to-side; to's id-set keys the from-side.
     CompositeSetLookup<ToEntity, ToName, ToPlural, ToId, ToCount, FromEntity, FromPlural, FromCount> &
     CompositeSetLookup<FromEntity, FromName, FromPlural, FromId, FromCount, ToEntity, ToPlural, ToCount> &
+    IndexOfMethod<FromName, FromCount, ToName, ToEntity, ToCount> &
+    IndexOfMethod<ToName, ToCount, FromName, FromEntity, FromCount> &
+    OrderingMethods<FromName, FromCount, ToName, ToPlural, ToEntity, ToCount> &
+    OrderingMethods<ToName, ToCount, FromName, FromPlural, FromEntity, FromCount> &
     MutationMethods<FromEntity, FromName, ToEntity, ToName>;
 };
 
@@ -174,8 +236,11 @@ type RelationshipOutput<
  *   withEntities(bookConfig),
  *   withEntityRelationship({ collection: 'library', count: 1 }, { collection: 'book', count: 'many' }),
  * );
- * // booksByLibrary(library | id) -> Book[]   ·   libraryByBook(book | id) -> Library | undefined
- * // libraryHasBook · bookCountByLibrary · addBookToLibrary · removeBookFromLibrary · moveBookToLibrary
+ * // booksByLibrary(library | id) -> Book[]
+ * // libraryByBook(book | id) -> Library | undefined
+ * // libraryHasBook, bookCountByLibrary, addBookToLibrary, removeBookFromLibrary, moveBookToLibrary
+ * // indexOfLibraryBook(book | id) -> number (the book's position in its library, -1 if absent)
+ * // swapLibraryBooks(a, b), reorderLibraryBooks(orderedBooks), moveLibraryBookToIndex(book, index) reorder a library's books
  * // book side is 'many', so a set-lookup keyed by a full book-set: libraryByBooks(...books | ids) -> Library
  */
 export const withEntityRelationship = <
@@ -199,12 +264,12 @@ export const withEntityRelationship = <
     FromName,
     FromPlural,
     FromCount,
-    IdOf<FromSelect>,
+    IdOf<FromSelect, EntityOf<Store, FromName>>,
     EntityOf<Store, ToName>,
     ToName,
     ToPlural,
     ToCount,
-    IdOf<ToSelect>
+    IdOf<ToSelect, EntityOf<Store, ToName>>
   >
 > => {
   const fromName = from.collection;
@@ -483,6 +548,119 @@ export const withEntityRelationship = <
         };
       };
 
+      // indexOf<Owner><Member>(member): the member's position in its owner's ordered list, -1 if absent.
+      // Takes only the member; the owner is the single entity it belongs to. Generated where the member
+      // has exactly one owner (owner side is count 1) and that owner holds many members.
+      if (fromIsSingle && isMulti(to.count)) {
+        methods[`indexOf${fromCap}${toCap}`] = (member: any) => {
+          const memberId = resolveToRef(member) as EntityId;
+          return toIdsByFrom(fromIdsByTo(memberId)[0]).indexOf(memberId);
+        };
+      }
+      if (toIsSingle && isMulti(from.count)) {
+        methods[`indexOf${toCap}${fromCap}`] = (member: any) => {
+          const memberId = resolveFromRef(member) as EntityId;
+          return fromIdsByTo(toIdsByFrom(memberId)[0]).indexOf(memberId);
+        };
+      }
+
+      // Ordering mutations for an owner's member list: swap / reorder / move-to-index. Installed in the
+      // same direction as indexOf (owner side single, member side many). The owner's ordered members are
+      // its entry in the manual links map; mergeLinks keeps that array's order ahead of the FK-derived
+      // links, so writing it sets the order the get-by lookup returns.
+      const installOrdering = (
+        ownerCap: string,
+        memberCap: string,
+        memberPluralCap: string,
+        linksKey: string,
+        membersOf: (ownerId: EntityId | undefined) => EntityId[],
+        ownerOf: (memberId: EntityId | undefined) => EntityId | undefined,
+        resolveMember: (ref: any) => EntityId | undefined,
+      ): void => {
+        const writeOrder = (ownerId: EntityId, orderedIds: EntityId[]): void =>
+          patchState(innerStore, { [linksKey]: { ...innerStore[linksKey](), [ownerId]: orderedIds } } as any);
+
+        methods[`swap${ownerCap}${memberPluralCap}`] = (memberA: any, memberB: any) => {
+          const aId = resolveMember(memberA);
+          const bId = resolveMember(memberB);
+          const ownerId = ownerOf(aId);
+
+          if (!hasId(ownerId)) return;
+
+          const current = [...membersOf(ownerId)];
+          const indexA = current.indexOf(aId as EntityId);
+          const indexB = current.indexOf(bId as EntityId);
+
+          if (indexA === -1 || indexB === -1) {
+            console.warn(`signalkin: swap${ownerCap}${memberPluralCap} — both members must belong to the same ${ownerCap.toLowerCase()}; call ignored.`);
+            return;
+          }
+
+          [current[indexA], current[indexB]] = [current[indexB], current[indexA]];
+          writeOrder(ownerId, current);
+        };
+
+        methods[`reorder${ownerCap}${memberPluralCap}`] = (orderedMembers: any[]) => {
+          const orderedIds = (orderedMembers ?? []).map(resolveMember).filter(hasId) as EntityId[];
+          const ownerId = ownerOf(orderedIds[0]);
+
+          if (!hasId(ownerId)) return;
+
+          const current = membersOf(ownerId);
+          const isFullPermutation =
+            orderedIds.length === current.length &&
+            new Set(orderedIds).size === orderedIds.length &&
+            orderedIds.every((id) => current.includes(id));
+
+          if (!isFullPermutation) {
+            console.warn(`signalkin: reorder${ownerCap}${memberPluralCap} — pass the complete set of the ${ownerCap.toLowerCase()}'s members exactly once; call ignored.`);
+            return;
+          }
+
+          writeOrder(ownerId, orderedIds);
+        };
+
+        methods[`move${ownerCap}${memberCap}ToIndex`] = (member: any, index: number) => {
+          const memberId = resolveMember(member);
+          const ownerId = ownerOf(memberId);
+
+          if (!hasId(ownerId)) return;
+
+          const current = [...membersOf(ownerId)];
+          const currentIndex = current.indexOf(memberId as EntityId);
+
+          if (currentIndex === -1) return;
+
+          const target = Math.max(0, Math.min(index, current.length - 1));
+          current.splice(currentIndex, 1);
+          current.splice(target, 0, memberId as EntityId);
+          writeOrder(ownerId, current);
+        };
+      };
+
+      if (fromIsSingle && isMulti(to.count)) {
+        installOrdering(
+          fromCap,
+          toCap,
+          capitalize(toPlural),
+          forwardLinksKey,
+          (ownerId) => toIdsByFrom(ownerId),
+          (memberId) => fromIdsByTo(memberId)[0],
+          resolveToRef,
+        );
+      }
+      if (toIsSingle && isMulti(from.count)) {
+        installOrdering(
+          toCap,
+          fromCap,
+          capitalize(fromPlural),
+          reverseLinksKey,
+          (ownerId) => fromIdsByTo(ownerId),
+          (memberId) => toIdsByFrom(memberId)[0],
+          resolveFromRef,
+        );
+      }
+
       if (compositeLookups) {
         // from's id-set keys the to-side (source: to -> its froms).
         if (isMulti(from.count)) {
@@ -506,12 +684,12 @@ export const withEntityRelationship = <
       FromName,
       FromPlural,
       FromCount,
-      IdOf<FromSelect>,
+      IdOf<FromSelect, EntityOf<Store, FromName>>,
       EntityOf<Store, ToName>,
       ToName,
       ToPlural,
       ToCount,
-      IdOf<ToSelect>
+      IdOf<ToSelect, EntityOf<Store, ToName>>
     >
   >;
 };

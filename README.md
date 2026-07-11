@@ -72,6 +72,11 @@ export class App {
     store.removeTask(id);
     store.removeTasks(ids);
     store.removeAllTasks();
+
+    // <-- and these reorder the collection's own order (what tasks() follows):
+    store.swapTasks(taskA, taskB); // swap two entities' positions
+    store.reorderTasks(orderedTasks); // set the whole order; pass every task exactly once
+    store.moveTaskToIndex(task, index); // move one entity to a position
   }
 }
 ```
@@ -130,6 +135,14 @@ export class App {
     store.addBookToAuthor(authorId, bookId);
     store.removeBookFromAuthor(authorId, bookId);
     store.moveBookToAuthor(bookId, authorId);
+
+    // <-- and, since an author owns many books, methods to find and reorder a book within its author.
+    // These exist only in the direction with a single owner (a book has one author); pass just the book,
+    // its author is inferred:
+    store.indexOfAuthorBook(book); // the book's position in its author's list (number, -1 if not linked)
+    store.swapAuthorBooks(bookA, bookB); // swap two of an author's books
+    store.reorderAuthorBooks(orderedBooks); // set one author's order; pass all of that author's books exactly once
+    store.moveAuthorBookToIndex(book, index); // move a book within its author's list
   }
 }
 ```
@@ -367,7 +380,7 @@ export const HospitalStore = signalStore(
   template: `
     <h3>{{ store.hospitalById(hospitalId())?.name }}</h3>
     <p>
-      {{ store.patientsByHospital(hospitalId()).length }} patients ·
+      {{ store.patientsByHospital(hospitalId()).length }} patients,
       {{ store.medicationsByHospital(hospitalId()).length }} medications in use
     </p>
   `,

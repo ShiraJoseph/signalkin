@@ -103,6 +103,17 @@ type EntityAccessorMethods<Store, Configs extends readonly EntityAccessorConfig[
 } & {
   [Name in Names as `removeAll${Capitalize<PluralOf<Configs, Name>>}`]: () => void;
 } & {
+  [Name in Names as `swap${Capitalize<PluralOf<Configs, Name>>}`]: (
+    entityA: EntityOf<Store, Name> | EntityId,
+    entityB: EntityOf<Store, Name> | EntityId,
+  ) => void;
+} & {
+  [Name in Names as `reorder${Capitalize<PluralOf<Configs, Name>>}`]: (
+    orderedEntities: (EntityOf<Store, Name> | EntityId)[],
+  ) => void;
+} & {
+  [Name in Names as `move${Capitalize<Name>}ToIndex`]: (entity: EntityOf<Store, Name> | EntityId, index: number) => void;
+} & {
   [Name in Names as `${Name}ById`]: (id: EntityId) => EntityOf<Store, Name> | undefined;
 } & {
   [Name in Names as `has${Capitalize<Name>}`]: (entity: EntityOf<Store, Name> | EntityId) => boolean;
@@ -122,9 +133,10 @@ type EntityAccessorsOutput<Store, Configs extends readonly EntityAccessorConfig[
  *   withEntities(bookConfig),
  *   withEntityAccessors(bookConfig),
  * );
- * // books() · bookMap() · bookCount() · bookById(id) · hasBook(book | id)
- * // addBook · addBooks · prependBook · setBook · setAllBooks · upsertBook
- * // updateBook(book | id, changes) · updateAllBooks(changes) · removeBook(book | id) · removeAllBooks()
+ * // books(), bookMap(), bookCount(), bookById(id), hasBook(book | id)
+ * // addBook, addBooks, prependBook, setBook, setAllBooks, upsertBook
+ * // updateBook(book | id, changes), updateAllBooks(changes), removeBook(book | id), removeAllBooks()
+ * // swapBooks(a, b), reorderBooks(orderedBooks), moveBookToIndex(book | id, index) reorder the collection
  */
 export const withEntityAccessors = <
   const Configs extends readonly EntityAccessorConfig[],
@@ -211,6 +223,53 @@ export const withEntityAccessors = <
         methods[`remove${pluralCap}`] = (entitiesOrPredicate: unknown) =>
           patchState(innerStore, removeEntities(resolveTargets(entitiesOrPredicate) as any, updaterConfig));
         methods[`removeAll${pluralCap}`] = () => patchState(innerStore, removeAllEntities(updaterConfig));
+
+        // Ordering mutations over the collection's own id order (what `${collection}Entities` follows).
+        const idsKey = `${collection}Ids`;
+        const writeIds = (ids: EntityId[]): void => patchState(innerStore, { [idsKey]: ids } as any);
+
+        methods[`swap${pluralCap}`] = (aRef: unknown, bRef: unknown) => {
+          const ids = [...(innerStore[idsKey]() as EntityId[])];
+          const indexA = ids.indexOf(resolveRef(aRef) as EntityId);
+          const indexB = ids.indexOf(resolveRef(bRef) as EntityId);
+
+          if (indexA === -1 || indexB === -1) {
+            console.warn(`signalkin: swap${pluralCap} — both entities must be in the '${collection}' collection; call ignored.`);
+            return;
+          }
+
+          [ids[indexA], ids[indexB]] = [ids[indexB], ids[indexA]];
+          writeIds(ids);
+        };
+
+        methods[`reorder${pluralCap}`] = (orderedEntities: unknown[]) => {
+          const orderedIds = (orderedEntities ?? []).map(resolveRef).filter((id): id is EntityId => id !== undefined);
+          const current = innerStore[idsKey]() as EntityId[];
+          const isFullPermutation =
+            orderedIds.length === current.length &&
+            new Set(orderedIds).size === orderedIds.length &&
+            orderedIds.every((id) => current.includes(id));
+
+          if (!isFullPermutation) {
+            console.warn(`signalkin: reorder${pluralCap} — pass every '${collection}' entity exactly once; call ignored.`);
+            return;
+          }
+
+          writeIds(orderedIds);
+        };
+
+        methods[`move${cap}ToIndex`] = (ref: unknown, index: number) => {
+          const ids = [...(innerStore[idsKey]() as EntityId[])];
+          const currentIndex = ids.indexOf(resolveRef(ref) as EntityId);
+
+          if (currentIndex === -1) return;
+
+          const target = Math.max(0, Math.min(index, ids.length - 1));
+          const [moved] = ids.splice(currentIndex, 1);
+          ids.splice(target, 0, moved);
+          writeIds(ids);
+        };
+
         methods[`${collection}ById`] = (id: EntityId) => innerStore[entityMapKey]()[id];
         methods[`has${cap}`] = (ref: unknown) => innerStore[entityMapKey]()[resolveRef(ref) as EntityId] !== undefined;
       });

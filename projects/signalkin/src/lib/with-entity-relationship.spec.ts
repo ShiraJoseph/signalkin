@@ -112,6 +112,32 @@ describe('withEntityRelationship', () => {
       expect(store.libraryCountByBook('b3')).toBe(1);
     });
 
+    it('reports a book position within its library from the book alone (entity or id, -1 if absent)', () => {
+      expect(store.indexOfLibraryBook('b1')).toBe(0);
+      expect(store.indexOfLibraryBook(hobbit)).toBe(1);
+      expect(store.indexOfLibraryBook('b4')).toBe(-1); // strayBook has no library
+      // only the direction with a single owner is generated; a book has one library, so no reverse.
+      expect((store as unknown as Record<string, unknown>)['indexOfBookLibrary']).toBeUndefined();
+    });
+
+    it('reorders a library books via swap, full reorder, and move-to-index', () => {
+      expect(store.bookIdsByLibrary('l1')).toEqual(['b1', 'b2']);
+
+      store.swapLibraryBooks('b1', 'b2');
+      expect(store.bookIdsByLibrary('l1')).toEqual(['b2', 'b1']);
+
+      store.moveLibraryBookToIndex('b1', 0);
+      expect(store.bookIdsByLibrary('l1')).toEqual(['b1', 'b2']);
+
+      store.reorderLibraryBooks([hobbit, dune]); // full set as entities
+      expect(store.bookIdsByLibrary('l1')).toEqual(['b2', 'b1']);
+    });
+
+    it('ignores an incomplete reorder (strict full set)', () => {
+      store.reorderLibraryBooks(['b1']); // missing b2
+      expect(store.bookIdsByLibrary('l1')).toEqual(['b1', 'b2']);
+    });
+
     it('finds the single parent from a full child-set (composite keyed by the many side)', () => {
       expect(store.libraryByBooks('b1', 'b2')).toEqual(central);
       expect(store.libraryByBooks(dune, hobbit)).toEqual(central);
@@ -304,6 +330,12 @@ describe('withEntityRelationship', () => {
       expect(store.studentIdsByGroups('g2', 'g1')).toEqual(['s1', 's2']);
       expect(store.studentsByGroups('g1')).toEqual([{ id: 's3', groupIds: ['g1'] }]);
       expect(store.groupsByStudents('s1', 's2', 's3')).toEqual([{ id: 'g1' }]);
+    });
+
+    it('generates no indexOf for many-to-many (no single owner to infer)', () => {
+      const store = TestBed.inject(GroupStore) as unknown as Record<string, unknown>;
+      expect(store['indexOfStudentGroup']).toBeUndefined();
+      expect(store['indexOfGroupStudent']).toBeUndefined();
     });
 
     it('does not collide when an id contains the delimiter character', () => {

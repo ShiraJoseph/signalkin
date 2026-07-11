@@ -100,22 +100,26 @@ export type EntityPredicate<Entity> = (entity: Entity) => boolean;
 
 /**
  * A property name to read, or a getter that returns an id — mirrors ngrx `selectId`, but a key string
- * also works. A typed getter (e.g. `(entity) => entity.id2`) lets the id type be inferred (branded ids
- * like `OptionId` flow through the return types); a string key or omitting it falls back to `EntityId`.
+ * also works. Either form carries a branded id like `OptionId` into the generated lookups: a typed
+ * getter (e.g. `(entity) => entity.id2`) through its return type, a key (e.g. `'id2'`) through the
+ * property type it names. Omitting it falls back to `EntityId`.
  */
 export type IdAccessor<Id extends EntityId = EntityId> = string | ((entity: any) => Id);
 
 /**
- * The id type a `selectId` accessor yields: a getter's return type (so a branded id like `OptionId`
- * flows into the generated lookups), or `EntityId` for a string key or when no accessor is given.
- * Capturing the accessor's own type and extracting from it is what lets the brand infer — a nested
- * `IdAccessor<Id>` in an optional position does not.
+ * The id type a `selectId` accessor yields: a getter's return type, or the type of the property a key
+ * string names, so a branded id like `OptionId` flows into the generated lookups. Falls back to
+ * `EntityId` when no accessor is given, when a getter is untyped, or when a key does not resolve to an
+ * id. A key resolves against `Entity`, which is why the accessor's own type is captured and passed in —
+ * ngrx widens `selectId` to `EntityId` on an `entityConfig`, so re-reading the property is what keeps
+ * the brand when a config is spread into a relationship side.
  */
-export type IdOf<Accessor> = Accessor extends (entity: any) => infer Id
-  ? Id extends EntityId
+export type IdOf<Accessor, Entity = unknown> = EntityId &
+  (Accessor extends (entity: any) => infer Id
     ? Id
-    : EntityId
-  : EntityId;
+    : Accessor extends keyof Entity
+      ? Entity[Accessor]
+      : EntityId);
 
 /**
  * Like {@link IdAccessor}, but for a foreign key that may be absent or plural — a getter may return a

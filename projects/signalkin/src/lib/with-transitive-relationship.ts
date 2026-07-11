@@ -46,7 +46,8 @@ type TransitiveOutput<
  *   withEntityRelationship({ collection: 'shelf', count: 1 }, { collection: 'book', count: 'many' }),
  *   withTransitiveRelationship({ from: 'library', to: 'book', through: 'shelf' }),
  * );
- * // booksByLibrary(library | id) -> Book[]   ·   librariesByBook(book | id) -> Library[]
+ * // booksByLibrary(library | id) -> Book[]
+ * // librariesByBook(book | id) -> Library[]
  */
 export const withTransitiveRelationship = <
   FromName extends string,
