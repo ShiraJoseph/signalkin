@@ -30,6 +30,7 @@ import {
   IdAccessor,
   IdLead,
   IdOf,
+  IsMany,
   IsMulti,
   IsSingle,
   Lead,
@@ -202,6 +203,48 @@ type OrderingMethods<
     : {}
   : {};
 
+/**
+ * The By-form of {@link OrderingMethods} plus indexOf, for a member that has MORE THAN ONE owner (owner
+ * side is not count 1) and an open-ended `'many'` member side. The owner can't be inferred, so it is
+ * named explicitly as the last argument: `indexOfCellByOption(cell, option)`. Members are passed as the
+ * entity or its id; `reorder` requires that owner's complete member set.
+ */
+type ByOrderingMethods<
+  OwnerName extends string,
+  OwnerEntity,
+  OwnerCount extends Cardinality,
+  MemberName extends string,
+  MemberPlural extends string,
+  MemberEntity,
+  MemberCount extends Cardinality,
+> = IsSingle<OwnerCount> extends true
+  ? {}
+  : IsMany<MemberCount> extends true
+    ? {
+        [Key in `indexOf${Capitalize<MemberName>}By${Capitalize<OwnerName>}`]: (
+          member: MemberEntity | EntityId,
+          owner: OwnerEntity | EntityId,
+        ) => number;
+      } & {
+        [Key in `swap${Capitalize<MemberPlural>}By${Capitalize<OwnerName>}`]: (
+          memberA: MemberEntity | EntityId,
+          memberB: MemberEntity | EntityId,
+          owner: OwnerEntity | EntityId,
+        ) => void;
+      } & {
+        [Key in `reorder${Capitalize<MemberPlural>}By${Capitalize<OwnerName>}`]: (
+          orderedMembers: (MemberEntity | EntityId)[],
+          owner: OwnerEntity | EntityId,
+        ) => void;
+      } & {
+        [Key in `move${Capitalize<MemberName>}By${Capitalize<OwnerName>}ToIndex`]: (
+          member: MemberEntity | EntityId,
+          index: number,
+          owner: OwnerEntity | EntityId,
+        ) => void;
+      }
+    : {};
+
 type RelationshipOutput<
   FromEntity,
   FromName extends string,
@@ -224,6 +267,8 @@ type RelationshipOutput<
     IndexOfMethod<ToName, ToCount, FromName, FromEntity, FromCount> &
     OrderingMethods<FromName, FromCount, ToName, ToPlural, ToEntity, ToCount> &
     OrderingMethods<ToName, ToCount, FromName, FromPlural, FromEntity, FromCount> &
+    ByOrderingMethods<FromName, FromEntity, FromCount, ToName, ToPlural, ToEntity, ToCount> &
+    ByOrderingMethods<ToName, ToEntity, ToCount, FromName, FromPlural, FromEntity, FromCount> &
     MutationMethods<FromEntity, FromName, ToEntity, ToName>;
 };
 
@@ -548,26 +593,57 @@ export const withEntityRelationship = <
         };
       };
 
-      // indexOf<Owner><Member>(member): the member's position in its owner's ordered list, -1 if absent.
-      // Takes only the member; the owner is the single entity it belongs to. Generated where the member
-      // has exactly one owner (owner side is count 1) and that owner holds many members.
-      if (fromIsSingle && isMulti(to.count)) {
-        methods[`indexOf${fromCap}${toCap}`] = (member: any) => {
-          const memberId = resolveToRef(member) as EntityId;
-          return toIdsByFrom(fromIdsByTo(memberId)[0]).indexOf(memberId);
-        };
-      }
-      if (toIsSingle && isMulti(from.count)) {
-        methods[`indexOf${toCap}${fromCap}`] = (member: any) => {
-          const memberId = resolveFromRef(member) as EntityId;
-          return fromIdsByTo(toIdsByFrom(memberId)[0]).indexOf(memberId);
-        };
-      }
+      // Ordering + indexOf over an owner's member list. The owner's ordered members are its entry in the
+      // manual links map; mergeLinks keeps that array's order ahead of the FK-derived links, so writing it
+      // sets the order the get-by lookup returns. swap/reorder/move share this core, keyed by owner id.
+      const makeOrderingCore = (linksKey: string, membersOf: (ownerId: EntityId | undefined) => EntityId[]) => {
+        const writeOrder = (ownerId: EntityId, orderedIds: EntityId[]): void =>
+          patchState(innerStore, { [linksKey]: { ...innerStore[linksKey](), [ownerId]: orderedIds } } as any);
 
-      // Ordering mutations for an owner's member list: swap / reorder / move-to-index. Installed in the
-      // same direction as indexOf (owner side single, member side many). The owner's ordered members are
-      // its entry in the manual links map; mergeLinks keeps that array's order ahead of the FK-derived
-      // links, so writing it sets the order the get-by lookup returns.
+        return {
+          swap: (label: string, ownerId: EntityId, aId: EntityId | undefined, bId: EntityId | undefined): void => {
+            const current = [...membersOf(ownerId)];
+            const indexA = current.indexOf(aId as EntityId);
+            const indexB = current.indexOf(bId as EntityId);
+
+            if (indexA === -1 || indexB === -1) {
+              console.warn(`signalkin: ${label} — both members must belong to that owner; call ignored.`);
+              return;
+            }
+
+            [current[indexA], current[indexB]] = [current[indexB], current[indexA]];
+            writeOrder(ownerId, current);
+          },
+          reorder: (label: string, ownerId: EntityId, orderedIds: EntityId[]): void => {
+            const current = membersOf(ownerId);
+            const isFullPermutation =
+              orderedIds.length === current.length &&
+              new Set(orderedIds).size === orderedIds.length &&
+              orderedIds.every((id) => current.includes(id));
+
+            if (!isFullPermutation) {
+              console.warn(`signalkin: ${label} — pass that owner's complete member set exactly once; call ignored.`);
+              return;
+            }
+
+            writeOrder(ownerId, orderedIds);
+          },
+          move: (ownerId: EntityId, memberId: EntityId | undefined, index: number): void => {
+            const current = [...membersOf(ownerId)];
+            const currentIndex = current.indexOf(memberId as EntityId);
+
+            if (currentIndex === -1) return;
+
+            const target = Math.max(0, Math.min(index, current.length - 1));
+            current.splice(currentIndex, 1);
+            current.splice(target, 0, memberId as EntityId);
+            writeOrder(ownerId, current);
+          },
+        };
+      };
+
+      // One-arg family: the member has exactly one owner (owner side count 1), so it is inferred and only
+      // the member is passed. indexOf<Owner><Member>(member) + swap/reorder/move<Owner><Member(s)>.
       const installOrdering = (
         ownerCap: string,
         memberCap: string,
@@ -577,88 +653,83 @@ export const withEntityRelationship = <
         ownerOf: (memberId: EntityId | undefined) => EntityId | undefined,
         resolveMember: (ref: any) => EntityId | undefined,
       ): void => {
-        const writeOrder = (ownerId: EntityId, orderedIds: EntityId[]): void =>
-          patchState(innerStore, { [linksKey]: { ...innerStore[linksKey](), [ownerId]: orderedIds } } as any);
+        const core = makeOrderingCore(linksKey, membersOf);
 
+        methods[`indexOf${ownerCap}${memberCap}`] = (member: any) => {
+          const memberId = resolveMember(member) as EntityId;
+          return membersOf(ownerOf(memberId)).indexOf(memberId);
+        };
         methods[`swap${ownerCap}${memberPluralCap}`] = (memberA: any, memberB: any) => {
           const aId = resolveMember(memberA);
-          const bId = resolveMember(memberB);
           const ownerId = ownerOf(aId);
-
           if (!hasId(ownerId)) return;
-
-          const current = [...membersOf(ownerId)];
-          const indexA = current.indexOf(aId as EntityId);
-          const indexB = current.indexOf(bId as EntityId);
-
-          if (indexA === -1 || indexB === -1) {
-            console.warn(`signalkin: swap${ownerCap}${memberPluralCap} — both members must belong to the same ${ownerCap.toLowerCase()}; call ignored.`);
-            return;
-          }
-
-          [current[indexA], current[indexB]] = [current[indexB], current[indexA]];
-          writeOrder(ownerId, current);
+          core.swap(`swap${ownerCap}${memberPluralCap}`, ownerId, aId, resolveMember(memberB));
         };
-
         methods[`reorder${ownerCap}${memberPluralCap}`] = (orderedMembers: any[]) => {
           const orderedIds = (orderedMembers ?? []).map(resolveMember).filter(hasId) as EntityId[];
           const ownerId = ownerOf(orderedIds[0]);
-
           if (!hasId(ownerId)) return;
-
-          const current = membersOf(ownerId);
-          const isFullPermutation =
-            orderedIds.length === current.length &&
-            new Set(orderedIds).size === orderedIds.length &&
-            orderedIds.every((id) => current.includes(id));
-
-          if (!isFullPermutation) {
-            console.warn(`signalkin: reorder${ownerCap}${memberPluralCap} — pass the complete set of the ${ownerCap.toLowerCase()}'s members exactly once; call ignored.`);
-            return;
-          }
-
-          writeOrder(ownerId, orderedIds);
+          core.reorder(`reorder${ownerCap}${memberPluralCap}`, ownerId, orderedIds);
         };
-
         methods[`move${ownerCap}${memberCap}ToIndex`] = (member: any, index: number) => {
           const memberId = resolveMember(member);
           const ownerId = ownerOf(memberId);
-
           if (!hasId(ownerId)) return;
-
-          const current = [...membersOf(ownerId)];
-          const currentIndex = current.indexOf(memberId as EntityId);
-
-          if (currentIndex === -1) return;
-
-          const target = Math.max(0, Math.min(index, current.length - 1));
-          current.splice(currentIndex, 1);
-          current.splice(target, 0, memberId as EntityId);
-          writeOrder(ownerId, current);
+          core.move(ownerId, memberId, index);
         };
       };
 
-      if (fromIsSingle && isMulti(to.count)) {
-        installOrdering(
-          fromCap,
-          toCap,
-          capitalize(toPlural),
-          forwardLinksKey,
-          (ownerId) => toIdsByFrom(ownerId),
-          (memberId) => fromIdsByTo(memberId)[0],
-          resolveToRef,
-        );
+      // By-family: the member has MORE THAN ONE owner (owner side not count 1) and the member side is the
+      // open-ended 'many', so the owner can't be inferred and is named as the last argument.
+      const installByOrdering = (
+        ownerCap: string,
+        memberCap: string,
+        memberPluralCap: string,
+        linksKey: string,
+        membersOf: (ownerId: EntityId | undefined) => EntityId[],
+        resolveOwner: (ref: any) => EntityId | undefined,
+        resolveMember: (ref: any) => EntityId | undefined,
+      ): void => {
+        const core = makeOrderingCore(linksKey, membersOf);
+
+        methods[`indexOf${memberCap}By${ownerCap}`] = (member: any, owner: any) =>
+          membersOf(resolveOwner(owner)).indexOf(resolveMember(member) as EntityId);
+        methods[`swap${memberPluralCap}By${ownerCap}`] = (memberA: any, memberB: any, owner: any) => {
+          const ownerId = resolveOwner(owner);
+          if (!hasId(ownerId)) return;
+          core.swap(`swap${memberPluralCap}By${ownerCap}`, ownerId, resolveMember(memberA), resolveMember(memberB));
+        };
+        methods[`reorder${memberPluralCap}By${ownerCap}`] = (orderedMembers: any[], owner: any) => {
+          const ownerId = resolveOwner(owner);
+          if (!hasId(ownerId)) return;
+          core.reorder(`reorder${memberPluralCap}By${ownerCap}`, ownerId, (orderedMembers ?? []).map(resolveMember).filter(hasId) as EntityId[]);
+        };
+        methods[`move${memberCap}By${ownerCap}ToIndex`] = (member: any, index: number, owner: any) => {
+          const ownerId = resolveOwner(owner);
+          if (!hasId(ownerId)) return;
+          core.move(ownerId, resolveMember(member), index);
+        };
+      };
+
+      // Direction owner = from, members = to (e.g. a feature's options, or an option's cells).
+      if (isMulti(to.count)) {
+        if (fromIsSingle) {
+          installOrdering(fromCap, toCap, capitalize(toPlural), forwardLinksKey,
+            (ownerId) => toIdsByFrom(ownerId), (memberId) => fromIdsByTo(memberId)[0], resolveToRef);
+        } else if (to.count === 'many') {
+          installByOrdering(fromCap, toCap, capitalize(toPlural), forwardLinksKey,
+            (ownerId) => toIdsByFrom(ownerId), resolveFromRef, resolveToRef);
+        }
       }
-      if (toIsSingle && isMulti(from.count)) {
-        installOrdering(
-          toCap,
-          fromCap,
-          capitalize(fromPlural),
-          reverseLinksKey,
-          (ownerId) => fromIdsByTo(ownerId),
-          (memberId) => toIdsByFrom(memberId)[0],
-          resolveFromRef,
-        );
+      // Direction owner = to, members = from.
+      if (isMulti(from.count)) {
+        if (toIsSingle) {
+          installOrdering(toCap, fromCap, capitalize(fromPlural), reverseLinksKey,
+            (ownerId) => fromIdsByTo(ownerId), (memberId) => toIdsByFrom(memberId)[0], resolveFromRef);
+        } else if (from.count === 'many') {
+          installByOrdering(toCap, fromCap, capitalize(fromPlural), reverseLinksKey,
+            (ownerId) => fromIdsByTo(ownerId), resolveToRef, resolveFromRef);
+        }
       }
 
       if (compositeLookups) {

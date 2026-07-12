@@ -12,6 +12,9 @@ export type IsSingle<Count extends Cardinality> = Count extends 1 ? true : false
 /** True when a side relates to MORE THAN ONE of the other (any number >= 2, or `'many'`) — i.e. not `1`. */
 export type IsMulti<Count extends Cardinality> = IsSingle<Count> extends true ? false : true;
 
+/** True only when a side's count is the open-ended `'many'` (not `1`, not a fixed number like `2`). */
+export type IsMany<Count extends Cardinality> = Count extends 'many' ? true : false;
+
 /**
  * True when a side's count is a FIXED number of 2+ (not `1`, not `'many'`). A fixed-size set of that
  * side's ids acts as a composite key that pins one of the other side, so a lookup keyed by it is single.

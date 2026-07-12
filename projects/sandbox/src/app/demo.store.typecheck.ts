@@ -59,6 +59,31 @@ export const stringKeyProbe = (): void => {
   assertType<WidgetId | undefined>(store.widgetIdByGadget('g-1'));
 };
 
+// By-family: where a member has more than one owner (owner side not count 1) and the member side is
+// 'many', index/ordering name the owner explicitly as the last argument.
+interface Shelf {
+  id: string;
+}
+interface Tome {
+  id: string;
+  shelfIds: [string, string];
+}
+const shelfConfig = entityConfig({ entity: type<Shelf>(), collection: 'shelf' });
+const tomeConfig = entityConfig({ entity: type<Tome>(), collection: 'tome' });
+const ByStore = signalStore(
+  withEntities(shelfConfig),
+  withEntities(tomeConfig),
+  withEntityRelationship({ collection: 'shelf', count: 2 }, { collection: 'tome', count: 'many' }),
+);
+
+export const byProbe = (): void => {
+  const store = inject(ByStore);
+  assertType<number>(store.indexOfTomeByShelf('t1', 's1'));
+  store.swapTomesByShelf('t1', 't2', 's1');
+  store.reorderTomesByShelf(['t1', 't2'], 's1');
+  store.moveTomeByShelfToIndex('t1', 0, 's1');
+};
+
 export const typecheckProbe = (): void => {
   const store = inject(DemoStore);
   const citywide: LibrarySystem = { id: 's1', name: 'City-Wide' };

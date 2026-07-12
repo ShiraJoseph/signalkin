@@ -311,6 +311,32 @@ describe('withEntityRelationship', () => {
       expect(store.rowsByBooks('b9')).toEqual([{ id: 'r1' }, { id: 'r2' }]);
       expect(store.rowIdsByBooks('b9')).toEqual(['r1', 'r2']);
     });
+
+    it('indexes and reorders a row books via the By-family (owner named explicitly)', () => {
+      const store = TestBed.inject(RowStore);
+      store.setAllRows([{ id: 'r1' }, { id: 'r2' }]);
+      store.setAllBooks([
+        { id: 'b1', title: 'A', rowIds: ['r1'] },
+        { id: 'b2', title: 'B', rowIds: ['r1'] },
+        { id: 'b3', title: 'C', rowIds: ['r1', 'r2'] },
+      ]);
+
+      expect(store.bookIdsByRow('r1')).toEqual(['b1', 'b2', 'b3']);
+      expect(store.indexOfBookByRow('b3', 'r1')).toBe(2);
+      expect(store.indexOfBookByRow('b3', 'r2')).toBe(0); // b3 is first (only) in r2
+
+      store.swapBooksByRow('b1', 'b3', 'r1');
+      expect(store.bookIdsByRow('r1')).toEqual(['b3', 'b2', 'b1']);
+
+      store.moveBookByRowToIndex('b3', 2, 'r1');
+      expect(store.bookIdsByRow('r1')).toEqual(['b2', 'b1', 'b3']);
+
+      store.reorderBooksByRow(['b1', 'b2', 'b3'], 'r1');
+      expect(store.bookIdsByRow('r1')).toEqual(['b1', 'b2', 'b3']);
+
+      // the one-arg (single-owner) form is not generated for a 2:many relationship
+      expect((store as unknown as Record<string, unknown>)['indexOfRowBook']).toBeUndefined();
+    });
   });
 
   describe('composite set-lookup (many:many -> array of every match)', () => {
@@ -332,10 +358,15 @@ describe('withEntityRelationship', () => {
       expect(store.groupsByStudents('s1', 's2', 's3')).toEqual([{ id: 'g1' }]);
     });
 
-    it('generates no indexOf for many-to-many (no single owner to infer)', () => {
+    it('generates the By-family for many-to-many, not the one-arg form', () => {
       const store = TestBed.inject(GroupStore) as unknown as Record<string, unknown>;
+      // no single owner to infer, so no one-arg indexOf
       expect(store['indexOfStudentGroup']).toBeUndefined();
       expect(store['indexOfGroupStudent']).toBeUndefined();
+      // but the explicit-owner By-form is generated in both directions
+      expect(typeof store['indexOfGroupByStudent']).toBe('function');
+      expect(typeof store['indexOfStudentByGroup']).toBe('function');
+      expect(typeof store['reorderGroupsByStudent']).toBe('function');
     });
 
     it('does not collide when an id contains the delimiter character', () => {

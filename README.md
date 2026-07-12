@@ -143,6 +143,14 @@ export class App {
     store.swapAuthorBooks(bookA, bookB); // swap two of an author's books
     store.reorderAuthorBooks(orderedBooks); // set one author's order; pass all of that author's books exactly once
     store.moveAuthorBookToIndex(book, index); // move a book within its author's list
+
+    // In a relationship where a member has MORE THAN ONE owner (e.g. a 2:many where a cell has two
+    // options), the owner can't be inferred, so these take the same shape named indexOf<Member>By<Owner>
+    // with the owner as the last argument:
+    //   store.indexOfCellByOption(cell, option);
+    //   store.swapCellsByOption(cellA, cellB, option);
+    //   store.reorderCellsByOption(orderedCells, option);
+    //   store.moveCellByOptionToIndex(cell, index, option);
   }
 }
 ```
