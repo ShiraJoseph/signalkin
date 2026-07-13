@@ -7,7 +7,7 @@
     "build": "npm run sync:readme && ng build signalkin",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "sync:readme": "node -e \"require('fs').copyFileSync('README.md', 'projects/signalkin/README.md')\""
+    "sync:readme": "node scripts/sync-readme.mjs"
   },
   "private": true,
   "packageManager": "npm@11.13.0",
