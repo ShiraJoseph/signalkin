@@ -91,18 +91,24 @@ export class App {
 import { withEntityRelationship } from 'signalkin'; // <-- import
 
 interface Author { id: string; }
-interface Book { id: string; authorId: string } // <-- add an id for the parent entity to the child
+interface Editor { id: string; }
+interface Book { id: string; authorId: string; editorIds: string[] } // <-- ids for the related entities
 
 export const LibraryStore = signalStore(
   ...
   withEntities(entityConfig({ entity: type<Book>(), collection: 'book' })),
   withEntities(entityConfig({ entity: type<Author>(), collection: 'author' })),
-  
-  // <-- Add this after your entities to describe their relationship:
+  withEntities(entityConfig({ entity: type<Editor>(), collection: 'editor' })),
+
+  // <-- Add these after your entities to describe their relationships:
   withEntityRelationship(
-    { collection: 'author', count: 1 }, 
+    { collection: 'author', count: 1 },
     { collection: 'book', count: 'many' }
-  ) // this is a one-to-many relationship (use any number or 'many' as the count to adjust)
+  ), // use any number or 'many' as the count
+  withEntityRelationship(
+    { collection: 'book', count: 'many' },
+    { collection: 'editor', count: 2 } // two editors per book
+  )
 );
 ```
 
@@ -142,13 +148,13 @@ export class App {
     store.reorderAuthorBooks(orderedBooks);
     store.moveAuthorBookToIndex(book, index);
 
-    // (2+ owners:)
-    //   store.indexOfCellByOption(cell, option);
-    //   store.swapCellsByOption(cellA, cellB, option);
-    //   store.reorderCellsByOption(orderedCells, option);
-    //   store.moveCellByOptionToIndex(cell, index, option);
-    //   store.cellsByOptionAtIndex(option, 0);
-    //   store.cellIdsByOptionAtIndex(option, 0);
+    // <-- with 2+ owners (a book has 2 editors):
+    store.indexOfEditorByBook(editor, book);
+    store.swapEditorsByBook(editorA, editorB, book);
+    store.reorderEditorsByBook(orderedEditors, book);
+    store.moveEditorByBookToIndex(editor, index, book);
+    store.booksByEditorAtIndex(editor, 0);
+    store.bookIdsByEditorAtIndex(editor, 0);
   }
 }
 ```
