@@ -73,10 +73,10 @@ export class App {
     store.removeTasks(ids);
     store.removeAllTasks();
 
-    // <-- and these reorder the collection's own order (what tasks() follows):
-    store.swapTasks(taskA, taskB); // swap two entities' positions
-    store.reorderTasks(orderedTasks); // set the whole order; pass every task exactly once
-    store.moveTaskToIndex(task, index); // move one entity to a position
+    // <-- and entity order modifiers
+    store.swapTasks(taskA, taskB);
+    store.reorderTasks(orderedTasks);
+    store.moveTaskToIndex(task, index);
   }
 }
 ```
@@ -136,33 +136,19 @@ export class App {
     store.removeBookFromAuthor(authorId, bookId);
     store.moveBookToAuthor(bookId, authorId);
 
-    // <-- and, since an author owns many books, methods to find and reorder a book within its author.
-    // These exist only in the direction with a single owner (a book has one author); pass just the book,
-    // its author is inferred:
-    store.indexOfAuthorBook(book); // the book's position in its author's list (number, -1 if not linked)
-    store.swapAuthorBooks(bookA, bookB); // swap two of an author's books
-    store.reorderAuthorBooks(orderedBooks); // set one author's order; pass all of that author's books exactly once
-    store.moveAuthorBookToIndex(book, index); // move a book within its author's list
+    // <-- and entity order modifiers
+    store.indexOfAuthorBook(book);
+    store.swapAuthorBooks(bookA, bookB);
+    store.reorderAuthorBooks(orderedBooks);
+    store.moveAuthorBookToIndex(book, index);
 
-    // When a member has MORE THAN ONE owner (e.g. a 2:many where a cell has two options), the owner
-    // can't be inferred, so these take the shape indexOf<Member>By<Owner> with the owner as the last
-    // argument. With both sides multi they are generated in BOTH directions — order a cell's options,
-    // or order an option's cells:
-    //   store.indexOfOptionByCell(option, cell);   store.indexOfCellByOption(cell, option);
-    //   store.swapOptionsByCell(optionA, optionB, cell);
-    //   store.reorderOptionsByCell(orderedOptions, cell);
-    //   store.moveOptionByCellToIndex(option, index, cell);
-    // With syncForeignKeys on (the default), swap/reorder/move also write the new order back into the
-    // owner's own array key (e.g. cell.optionIds), so the reordering survives in the entity itself — but
-    // only for a side that actually holds that array; a 1:many owner keeps order via the manual link.
-
-    // When BOTH sides are multi, each side also gets a filtered lookup: the owners holding a member at
-    // an EXACT slot in their ordered list (entity + id forms). Index 0 is the first slot, so a member
-    // showing up at index 1 is ignored. A cell holds an ordered pair of optionIds, so:
-    //   store.cellsByOptionAtIndex(option, 0);    // Cell[] — cells whose FIRST option is this option
-    //   store.cellIdsByOptionAtIndex(option, 0);  // the same as ids
-    //   store.optionsByCellAtIndex(cell, 0);      // the mirror direction, keyed by cell
-    //   store.optionIdsByCellAtIndex(cell, 0);    // and its ids
+    // (2+ owners:)
+    //   store.indexOfCellByOption(cell, option);
+    //   store.swapCellsByOption(cellA, cellB, option);
+    //   store.reorderCellsByOption(orderedCells, option);
+    //   store.moveCellByOptionToIndex(cell, index, option);
+    //   store.cellsByOptionAtIndex(option, 0);
+    //   store.cellIdsByOptionAtIndex(option, 0);
   }
 }
 ```
