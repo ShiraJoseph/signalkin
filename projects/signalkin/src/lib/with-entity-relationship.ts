@@ -30,7 +30,6 @@ import {
   IdAccessor,
   IdLead,
   IdOf,
-  IsMany,
   IsMulti,
   IsSingle,
   Lead,
@@ -403,6 +402,7 @@ export const withEntityRelationship = <
         // A to-side entity naming its from-side owner(s) (e.g. book.libraryId, or a book's aisleIds).
         Object.values(innerStore[toEntityMapKey]()).forEach((entity) => {
           const toId = readToPrimaryId(entity);
+
           if (!hasId(toId)) return;
 
           readToForeignIds(entity).forEach((fromId) => {
@@ -414,6 +414,7 @@ export const withEntityRelationship = <
         // A from-side entity naming its to-side(s) (covers the reverse direction and m:n).
         Object.values(innerStore[fromEntityMapKey]()).forEach((entity) => {
           const fromId = readFromPrimaryId(entity);
+
           if (!hasId(fromId)) return;
 
           readFromForeignIds(entity).forEach((toId) => {
@@ -479,6 +480,7 @@ export const withEntityRelationship = <
         mutate: (currentIds: EntityId[]) => EntityId[],
       ): void => {
         if (!syncForeignKeys || foreignKey === undefined) return;
+
         const entity = innerStore[entityMapKey]()[entityId];
 
         if (entity === undefined) return;
@@ -511,8 +513,11 @@ export const withEntityRelationship = <
         orderedIds: EntityId[],
       ): void => {
         if (!syncForeignKeys || foreignKey === undefined) return;
+
         const owner = innerStore[entityMapKey]()[ownerId];
+
         if (!owner || !Array.isArray(owner[foreignKey])) return;
+
         writeForeignIds(entityMapKey, updaterConfig, foreignKey, true, ownerId, () => orderedIds);
       };
       const writeFromOwnerOrder = (ownerId: EntityId, orderedIds: EntityId[]): void =>
@@ -556,6 +561,7 @@ export const withEntityRelationship = <
         if (syncForeignKeys && fromForeignKey !== undefined) {
           Object.values(innerStore[fromEntityMapKey]()).forEach((entity: any) => {
             const fromId = readFromPrimaryId(entity);
+
             if (!hasId(fromId) || fromId === newFromId) return;
 
             writeForeignIds(fromEntityMapKey, fromUpdaterConfig, fromForeignKey, !toIsSingle, fromId, (ids) =>
@@ -572,8 +578,8 @@ export const withEntityRelationship = <
       const toIdLead = toIsSingle ? `${toName}Id` : `${toName}Ids`;
       const fromEntityLead = fromIsSingle ? fromName : fromPlural;
       const fromIdLead = fromIsSingle ? `${fromName}Id` : `${fromName}Ids`;
-      const fromCap = capitalize(fromName);
-      const toCap = capitalize(toName);
+      const capitalizedFrom = capitalize(fromName);
+      const capitalizedTo = capitalize(toName);
 
       const toIdsByFrom = (fromId: EntityId | undefined): EntityId[] =>
         hasId(fromId) ? innerStore[forwardMapKey]()[fromId] ?? [] : [];
@@ -588,25 +594,25 @@ export const withEntityRelationship = <
       const shapeFromIds = (ids: EntityId[]): unknown => (fromIsSingle ? ids[0] : ids);
 
       const methods: Record<string, (...args: any[]) => unknown> = {
-        [`${toEntityLead}By${fromCap}`]: (from: any) => shapeToEntities(toIdsByFrom(resolveFromRef(from))),
-        [`${toIdLead}By${fromCap}`]: (from: any) => shapeToIds(toIdsByFrom(resolveFromRef(from))),
-        [`${fromEntityLead}By${toCap}`]: (to: any) => shapeFromEntities(fromIdsByTo(resolveToRef(to))),
-        [`${fromIdLead}By${toCap}`]: (to: any) => shapeFromIds(fromIdsByTo(resolveToRef(to))),
+        [`${toEntityLead}By${capitalizedFrom}`]: (from: any) => shapeToEntities(toIdsByFrom(resolveFromRef(from))),
+        [`${toIdLead}By${capitalizedFrom}`]: (from: any) => shapeToIds(toIdsByFrom(resolveFromRef(from))),
+        [`${fromEntityLead}By${capitalizedTo}`]: (to: any) => shapeFromEntities(fromIdsByTo(resolveToRef(to))),
+        [`${fromIdLead}By${capitalizedTo}`]: (to: any) => shapeFromIds(fromIdsByTo(resolveToRef(to))),
 
-        [`${fromName}Has${toCap}`]: (from: any, to: any) =>
+        [`${fromName}Has${capitalizedTo}`]: (from: any, to: any) =>
           (innerStore[forwardMapKey]()[resolveFromRef(from) as EntityId] ?? []).includes(resolveToRef(to) as EntityId),
-        [`${toName}Has${fromCap}`]: (to: any, from: any) =>
+        [`${toName}Has${capitalizedFrom}`]: (to: any, from: any) =>
           (innerStore[reverseMapKey]()[resolveToRef(to) as EntityId] ?? []).includes(resolveFromRef(from) as EntityId),
-        [`${toName}CountBy${fromCap}`]: (from: any) =>
+        [`${toName}CountBy${capitalizedFrom}`]: (from: any) =>
           (innerStore[forwardMapKey]()[resolveFromRef(from) as EntityId] ?? []).length,
-        [`${fromName}CountBy${toCap}`]: (to: any) =>
+        [`${fromName}CountBy${capitalizedTo}`]: (to: any) =>
           (innerStore[reverseMapKey]()[resolveToRef(to) as EntityId] ?? []).length,
 
-        [`add${toCap}To${fromCap}`]: (from: any, to: any) =>
+        [`add${capitalizedTo}To${capitalizedFrom}`]: (from: any, to: any) =>
           addLink(resolveFromRef(from) as EntityId, resolveToRef(to) as EntityId),
-        [`remove${toCap}From${fromCap}`]: (from: any, to: any) =>
+        [`remove${capitalizedTo}From${capitalizedFrom}`]: (from: any, to: any) =>
           removeLink(resolveFromRef(from) as EntityId, resolveToRef(to) as EntityId),
-        [`move${toCap}To${fromCap}`]: (to: any, newFrom: any) =>
+        [`move${capitalizedTo}To${capitalizedFrom}`]: (to: any, newFrom: any) =>
           moveTo(resolveToRef(to) as EntityId, resolveFromRef(newFrom) as EntityId),
       };
 
@@ -644,13 +650,13 @@ export const withEntityRelationship = <
         const single = isFixedCount(inputCount) || returnCount === 1;
         const entityLead = single ? returnName : returnPlural;
         const idLead = single ? `${returnName}Id` : `${returnName}Ids`;
-        const inputCap = capitalize(inputPlural);
+        const capitalizedInputPlural = capitalize(inputPlural);
 
-        methods[`${entityLead}By${inputCap}`] = (...refs: any[]) => {
+        methods[`${entityLead}By${capitalizedInputPlural}`] = (...refs: any[]) => {
           const entities = resolveEntities(lookupIds(refs), returnEntityMapKey);
           return single ? entities[0] : entities;
         };
-        methods[`${idLead}By${inputCap}`] = (...refs: any[]) => {
+        methods[`${idLead}By${capitalizedInputPlural}`] = (...refs: any[]) => {
           const ids = lookupIds(refs);
           return single ? ids[0] : ids;
         };
@@ -716,9 +722,9 @@ export const withEntityRelationship = <
       // One-arg family: the member has exactly one owner (owner side count 1), so it is inferred and only
       // the member is passed. indexOf<Owner><Member>(member) + swap/reorder/move<Owner><Member(s)>.
       const installOrdering = (
-        ownerCap: string,
-        memberCap: string,
-        memberPluralCap: string,
+        capitalizedOwner: string,
+        capitalizedMember: string,
+        capitalizedMemberPlural: string,
         linksKey: string,
         membersOf: (ownerId: EntityId | undefined) => EntityId[],
         ownerOf: (memberId: EntityId | undefined) => EntityId | undefined,
@@ -727,26 +733,33 @@ export const withEntityRelationship = <
       ): void => {
         const core = makeOrderingCore(linksKey, membersOf, writeOwnerOrder);
 
-        methods[`indexOf${ownerCap}${memberCap}`] = (member: any) => {
+        methods[`indexOf${capitalizedOwner}${capitalizedMember}`] = (member: any) => {
           const memberId = resolveMember(member) as EntityId;
+
           return membersOf(ownerOf(memberId)).indexOf(memberId);
         };
-        methods[`swap${ownerCap}${memberPluralCap}`] = (memberA: any, memberB: any) => {
+        methods[`swap${capitalizedOwner}${capitalizedMemberPlural}`] = (memberA: any, memberB: any) => {
           const aId = resolveMember(memberA);
           const ownerId = ownerOf(aId);
+
           if (!hasId(ownerId)) return;
-          core.swap(`swap${ownerCap}${memberPluralCap}`, ownerId, aId, resolveMember(memberB));
+
+          core.swap(`swap${capitalizedOwner}${capitalizedMemberPlural}`, ownerId, aId, resolveMember(memberB));
         };
-        methods[`reorder${ownerCap}${memberPluralCap}`] = (orderedMembers: any[]) => {
+        methods[`reorder${capitalizedOwner}${capitalizedMemberPlural}`] = (orderedMembers: any[]) => {
           const orderedIds = (orderedMembers ?? []).map(resolveMember).filter(hasId) as EntityId[];
           const ownerId = ownerOf(orderedIds[0]);
+
           if (!hasId(ownerId)) return;
-          core.reorder(`reorder${ownerCap}${memberPluralCap}`, ownerId, orderedIds);
+
+          core.reorder(`reorder${capitalizedOwner}${capitalizedMemberPlural}`, ownerId, orderedIds);
         };
-        methods[`move${ownerCap}${memberCap}ToIndex`] = (member: any, index: number) => {
+        methods[`move${capitalizedOwner}${capitalizedMember}ToIndex`] = (member: any, index: number) => {
           const memberId = resolveMember(member);
           const ownerId = ownerOf(memberId);
+
           if (!hasId(ownerId)) return;
+
           core.move(ownerId, memberId, index);
         };
       };
@@ -755,9 +768,9 @@ export const withEntityRelationship = <
       // one of each owner (member side multi — fixed 2+ or 'many'), so the owner can't be inferred and is
       // named as the last argument.
       const installByOrdering = (
-        ownerCap: string,
-        memberCap: string,
-        memberPluralCap: string,
+        capitalizedOwner: string,
+        capitalizedMember: string,
+        capitalizedMemberPlural: string,
         linksKey: string,
         membersOf: (ownerId: EntityId | undefined) => EntityId[],
         resolveOwner: (ref: any) => EntityId | undefined,
@@ -766,21 +779,27 @@ export const withEntityRelationship = <
       ): void => {
         const core = makeOrderingCore(linksKey, membersOf, writeOwnerOrder);
 
-        methods[`indexOf${memberCap}By${ownerCap}`] = (member: any, owner: any) =>
+        methods[`indexOf${capitalizedMember}By${capitalizedOwner}`] = (member: any, owner: any) =>
           membersOf(resolveOwner(owner)).indexOf(resolveMember(member) as EntityId);
-        methods[`swap${memberPluralCap}By${ownerCap}`] = (memberA: any, memberB: any, owner: any) => {
+        methods[`swap${capitalizedMemberPlural}By${capitalizedOwner}`] = (memberA: any, memberB: any, owner: any) => {
           const ownerId = resolveOwner(owner);
+
           if (!hasId(ownerId)) return;
-          core.swap(`swap${memberPluralCap}By${ownerCap}`, ownerId, resolveMember(memberA), resolveMember(memberB));
+
+          core.swap(`swap${capitalizedMemberPlural}By${capitalizedOwner}`, ownerId, resolveMember(memberA), resolveMember(memberB));
         };
-        methods[`reorder${memberPluralCap}By${ownerCap}`] = (orderedMembers: any[], owner: any) => {
+        methods[`reorder${capitalizedMemberPlural}By${capitalizedOwner}`] = (orderedMembers: any[], owner: any) => {
           const ownerId = resolveOwner(owner);
+
           if (!hasId(ownerId)) return;
-          core.reorder(`reorder${memberPluralCap}By${ownerCap}`, ownerId, (orderedMembers ?? []).map(resolveMember).filter(hasId) as EntityId[]);
+
+          core.reorder(`reorder${capitalizedMemberPlural}By${capitalizedOwner}`, ownerId, (orderedMembers ?? []).map(resolveMember).filter(hasId) as EntityId[]);
         };
-        methods[`move${memberCap}By${ownerCap}ToIndex`] = (member: any, index: number, owner: any) => {
+        methods[`move${capitalizedMember}By${capitalizedOwner}ToIndex`] = (member: any, index: number, owner: any) => {
           const ownerId = resolveOwner(owner);
+
           if (!hasId(ownerId)) return;
+
           core.move(ownerId, resolveMember(member), index);
         };
       };
@@ -791,7 +810,7 @@ export const withEntityRelationship = <
       const installIndexedLookup = (
         ownerName: string,
         ownerPlural: string,
-        memberCap: string,
+        capitalizedMember: string,
         ownerEntityMapKey: string,
         membersOf: (ownerId: EntityId | undefined) => EntityId[],
         ownersOf: (memberId: EntityId | undefined) => EntityId[],
@@ -801,9 +820,9 @@ export const withEntityRelationship = <
           const memberId = resolveMember(member);
           return ownersOf(memberId).filter((ownerId) => membersOf(ownerId)[index] === memberId);
         };
-        methods[`${ownerPlural}By${memberCap}AtIndex`] = (member: any, index: number) =>
+        methods[`${ownerPlural}By${capitalizedMember}AtIndex`] = (member: any, index: number) =>
           resolveEntities(ownerIdsAtIndex(member, index), ownerEntityMapKey);
-        methods[`${ownerName}IdsBy${memberCap}AtIndex`] = (member: any, index: number) =>
+        methods[`${ownerName}IdsBy${capitalizedMember}AtIndex`] = (member: any, index: number) =>
           ownerIdsAtIndex(member, index);
       };
 
@@ -812,20 +831,20 @@ export const withEntityRelationship = <
       // now for any multi member side (fixed count 2+ or 'many'), not just 'many'.
       if (isMulti(to.count)) {
         if (fromIsSingle) {
-          installOrdering(fromCap, toCap, capitalize(toPlural), forwardLinksKey,
+          installOrdering(capitalizedFrom, capitalizedTo, capitalize(toPlural), forwardLinksKey,
             (ownerId) => toIdsByFrom(ownerId), (memberId) => fromIdsByTo(memberId)[0], resolveToRef, writeFromOwnerOrder);
         } else {
-          installByOrdering(fromCap, toCap, capitalize(toPlural), forwardLinksKey,
+          installByOrdering(capitalizedFrom, capitalizedTo, capitalize(toPlural), forwardLinksKey,
             (ownerId) => toIdsByFrom(ownerId), resolveFromRef, resolveToRef, writeFromOwnerOrder);
         }
       }
       // Direction owner = to, members = from.
       if (isMulti(from.count)) {
         if (toIsSingle) {
-          installOrdering(toCap, fromCap, capitalize(fromPlural), reverseLinksKey,
+          installOrdering(capitalizedTo, capitalizedFrom, capitalize(fromPlural), reverseLinksKey,
             (ownerId) => fromIdsByTo(ownerId), (memberId) => toIdsByFrom(memberId)[0], resolveFromRef, writeToOwnerOrder);
         } else {
-          installByOrdering(toCap, fromCap, capitalize(fromPlural), reverseLinksKey,
+          installByOrdering(capitalizedTo, capitalizedFrom, capitalize(fromPlural), reverseLinksKey,
             (ownerId) => fromIdsByTo(ownerId), resolveToRef, resolveFromRef, writeToOwnerOrder);
         }
       }
@@ -835,9 +854,9 @@ export const withEntityRelationship = <
       // each. This is broader than the 'many'-only by-ordering gate above — a fixed-count member (a cell's
       // two optionIds, an ensemble's four musicians) still gets it. Both directions.
       if (isMulti(from.count) && isMulti(to.count)) {
-        installIndexedLookup(fromName, fromPlural, toCap, fromEntityMapKey,
+        installIndexedLookup(fromName, fromPlural, capitalizedTo, fromEntityMapKey,
           (ownerId) => toIdsByFrom(ownerId), (memberId) => fromIdsByTo(memberId), resolveToRef);
-        installIndexedLookup(toName, toPlural, fromCap, toEntityMapKey,
+        installIndexedLookup(toName, toPlural, capitalizedFrom, toEntityMapKey,
           (ownerId) => fromIdsByTo(ownerId), (memberId) => toIdsByFrom(memberId), resolveFromRef);
       }
 

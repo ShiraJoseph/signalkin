@@ -89,8 +89,8 @@ export const withTransitiveRelationship = <
   const toEntityMapKey = `${to}EntityMap`;
   const readFromId = toIdReader(config.selectFromId, 'id');
   const readToId = toIdReader(config.selectToId, 'id');
-  const fromCap = capitalize(from);
-  const toCap = capitalize(to);
+  const capitalizedFrom = capitalize(from);
+  const capitalizedTo = capitalize(to);
 
   const feature = signalStoreFeature(
     withMethods((innerStore: any) => {
@@ -119,10 +119,10 @@ export const withTransitiveRelationship = <
       const resolveToRef = toRefResolver(readToId);
 
       const methods: Record<string, (...args: any[]) => unknown> = {
-        [`${toPlural}By${fromCap}`]: (from: any) => resolve(toIdsByFrom(resolveFromRef(from)), toEntityMapKey),
-        [`${to}IdsBy${fromCap}`]: (from: any) => toIdsByFrom(resolveFromRef(from)),
-        [`${fromPlural}By${toCap}`]: (to: any) => resolve(fromIdsByTo(resolveToRef(to)), fromEntityMapKey),
-        [`${from}IdsBy${toCap}`]: (to: any) => fromIdsByTo(resolveToRef(to)),
+        [`${toPlural}By${capitalizedFrom}`]: (from: any) => resolve(toIdsByFrom(resolveFromRef(from)), toEntityMapKey),
+        [`${to}IdsBy${capitalizedFrom}`]: (from: any) => toIdsByFrom(resolveFromRef(from)),
+        [`${fromPlural}By${capitalizedTo}`]: (to: any) => resolve(fromIdsByTo(resolveToRef(to)), fromEntityMapKey),
+        [`${from}IdsBy${capitalizedTo}`]: (to: any) => fromIdsByTo(resolveToRef(to)),
       };
 
       return methods;
