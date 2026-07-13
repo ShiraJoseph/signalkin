@@ -1,13 +1,19 @@
 # signalkin
 
-This is a library with a set of custom, performant methods for NgRx's `signalStore`. 
-
-_See [NgRx SignalStore entity management guide](https://ngrx.io/guide/signals/signal-store/entity-management) to learn about entity signals and how to use them!_
-
 [![npm](https://img.shields.io/npm/v/signalkin.svg)](https://www.npmjs.com/package/signalkin)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Angular 22](https://img.shields.io/badge/Angular-22-dd0031.svg)](https://angular.dev)
 [![@ngrx/signals 21](https://img.shields.io/badge/%40ngrx%2Fsignals-21-purple.svg)](https://ngrx.io/guide/signals)
+
+Relationships and everyday collection methods for [`@ngrx/signals`](https://ngrx.io/guide/signals) entities.
+
+`@ngrx/signals/entities` gives you normalized collections; signalkin adds what you usually hand-write on top of them:
+
+- **`withEntityAccessors`** — one call, after your `withEntities` list, that adds every collection's standard methods (add/set/upsert/update/remove families, lookups, counts), all named by collection.
+- **`withEntityRelationship`** — relate two collections (1:many, N:many, m:n) with typed lookups in both directions, auto-indexed from foreign keys, plus link mutations.
+- **`withTransitiveRelationship`** — "grandparent" lookups that walk through intermediary collections, composing the direct relationships you already registered.
+
+Everything is a plain `signalStoreFeature` built only on public `@angular/core` + `@ngrx/signals` APIs, with no state duplication for FK-derived links (indexes are `computed`) and no effects or watchers.
 
 ## Install
 
@@ -16,6 +22,8 @@ npm install signalkin
 ```
 
 Peer dependencies: `@angular/core` and `@ngrx/signals`
+
+_See the [NgRx SignalStore entity management guide](https://ngrx.io/guide/signals/signal-store/entity-management) to learn about entity signals and how to use them!_
 
 ---
 
@@ -419,6 +427,8 @@ npx ng test signalkin    # vitest suite
 ```
 
 Before opening a PR, make sure all three pass, and add a sandbox type assertion for any type-level change. Work on a feature branch and open a PR rather than pushing to `main`. Agent-specific guidance (how the member names are derived, common pitfalls) lives in [`AGENTS.md`](AGENTS.md).
+
+This README is the canonical one; the published package's README is a copy. Run `npm run sync:readme` before publishing so npm matches.
 
 ---
 
