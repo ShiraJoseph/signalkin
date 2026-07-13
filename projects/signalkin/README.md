@@ -11,11 +11,7 @@
 [![Angular 22](https://img.shields.io/badge/Angular-22-dd0031.svg)](https://angular.dev)
 [![@ngrx/signals 21](https://img.shields.io/badge/%40ngrx%2Fsignals-21-purple.svg)](https://ngrx.io/guide/signals)
 
-Relationships and everyday collection methods for [`@ngrx/signals`](https://ngrx.io/guide/signals) entities.
-
-`@ngrx/signals/entities` gives you normalized collections; signalkin adds the relationships, lookups, and everyday collection methods you usually hand-write on top of them.
-
-Everything is a plain `signalStoreFeature` built only on public `@angular/core` + `@ngrx/signals` APIs, with no state duplication for FK-derived links (indexes are `computed`) and no effects or watchers.
+Performant relationship management (1:many, 2:1) and collection methods for [`@ngrx/signals`](https://ngrx.io/guide/signals) entities.
 
 ---
 
@@ -436,6 +432,8 @@ Contributions are welcome!
 This repo is an Angular workspace with two projects:
 - `projects/signalkin` (the published library, source in `src/lib`) and
 - `projects/sandbox` (a throwaway app whose `demo.store.typecheck.ts` asserts the generated types resolve through the built package).
+
+Everything is a plain `signalStoreFeature` built only on public `@angular/core` + `@ngrx/signals` APIs, with no state duplication for FK-derived links (indexes are `computed`) and no effects or watchers.
 
 _For AI Agents: [`AGENTS.md`](AGENTS.md)._
 
