@@ -9,9 +9,9 @@ Relationships and everyday collection methods for [`@ngrx/signals`](https://ngrx
 
 `@ngrx/signals/entities` gives you normalized collections; signalkin adds what you usually hand-write on top of them:
 
-- **[`withEntityAccessors`](#method-withentityaccessorsconfigs)** — one call, after your `withEntities` list, that adds every collection's standard methods (add/set/upsert/update/remove families, lookups, counts), all named by collection.
-- **[`withEntityRelationship`](#method-withentityrelationshipfrom-to-options)** — relate two collections (1:many, N:many, m:n) with typed lookups in both directions, auto-indexed from foreign keys, plus link mutations.
-- **[`withTransitiveRelationship`](#method-withtransitiverelationship-from-to-through--)** — "grandparent" lookups that walk through intermediary collections, composing the direct relationships you already registered.
+- **[`withEntityAccessors`](#method-withentityaccessorsconfigs)**: one call, after your `withEntities` list, that adds every collection's standard methods (add/set/upsert/update/remove families, lookups, counts), all named by collection.
+- **[`withEntityRelationship`](#method-withentityrelationshipfrom-to-options)**: relate two collections (1:many, N:many, m:n) with typed lookups in both directions, auto-indexed from foreign keys, plus link mutations.
+- **[`withTransitiveRelationship`](#method-withtransitiverelationship-from-to-through--)**: "grandparent" lookups that walk through intermediary collections, composing the direct relationships you already registered.
 
 Everything is a plain `signalStoreFeature` built only on public `@angular/core` + `@ngrx/signals` APIs, with no state duplication for FK-derived links (indexes are `computed`) and no effects or watchers.
 
