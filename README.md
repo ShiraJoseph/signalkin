@@ -144,13 +144,25 @@ export class App {
     store.reorderAuthorBooks(orderedBooks); // set one author's order; pass all of that author's books exactly once
     store.moveAuthorBookToIndex(book, index); // move a book within its author's list
 
-    // In a relationship where a member has MORE THAN ONE owner (e.g. a 2:many where a cell has two
-    // options), the owner can't be inferred, so these take the same shape named indexOf<Member>By<Owner>
-    // with the owner as the last argument:
-    //   store.indexOfCellByOption(cell, option);
-    //   store.swapCellsByOption(cellA, cellB, option);
-    //   store.reorderCellsByOption(orderedCells, option);
-    //   store.moveCellByOptionToIndex(cell, index, option);
+    // When a member has MORE THAN ONE owner (e.g. a 2:many where a cell has two options), the owner
+    // can't be inferred, so these take the shape indexOf<Member>By<Owner> with the owner as the last
+    // argument. With both sides multi they are generated in BOTH directions — order a cell's options,
+    // or order an option's cells:
+    //   store.indexOfOptionByCell(option, cell);   store.indexOfCellByOption(cell, option);
+    //   store.swapOptionsByCell(optionA, optionB, cell);
+    //   store.reorderOptionsByCell(orderedOptions, cell);
+    //   store.moveOptionByCellToIndex(option, index, cell);
+    // With syncForeignKeys on (the default), swap/reorder/move also write the new order back into the
+    // owner's own array key (e.g. cell.optionIds), so the reordering survives in the entity itself — but
+    // only for a side that actually holds that array; a 1:many owner keeps order via the manual link.
+
+    // When BOTH sides are multi, each side also gets a filtered lookup: the owners holding a member at
+    // an EXACT slot in their ordered list (entity + id forms). Index 0 is the first slot, so a member
+    // showing up at index 1 is ignored. A cell holds an ordered pair of optionIds, so:
+    //   store.cellsByOptionAtIndex(option, 0);    // Cell[] — cells whose FIRST option is this option
+    //   store.cellIdsByOptionAtIndex(option, 0);  // the same as ids
+    //   store.optionsByCellAtIndex(cell, 0);      // the mirror direction, keyed by cell
+    //   store.optionIdsByCellAtIndex(cell, 0);    // and its ids
   }
 }
 ```

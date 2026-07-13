@@ -337,6 +337,53 @@ describe('withEntityRelationship', () => {
       // the one-arg (single-owner) form is not generated for a 2:many relationship
       expect((store as unknown as Record<string, unknown>)['indexOfRowBook']).toBeUndefined();
     });
+
+    it('filters owners to those holding the member at an exact slot (rowsByBookAtIndex)', () => {
+      const store = TestBed.inject(RowStore);
+      store.setAllRows([{ id: 'r1' }, { id: 'r2' }]);
+      store.setAllBooks([
+        { id: 'b1', title: 'A', rowIds: ['r1'] },
+        { id: 'b2', title: 'B', rowIds: ['r1'] },
+        { id: 'b3', title: 'C', rowIds: ['r1', 'r2'] },
+      ]);
+
+      // b3 sits at index 2 of r1 but index 0 of r2 — each slot picks out a different row.
+      expect(store.rowsByBookAtIndex('b3', 2)).toEqual([{ id: 'r1' }]);
+      expect(store.rowsByBookAtIndex('b3', 0)).toEqual([{ id: 'r2' }]);
+      expect(store.rowIdsByBookAtIndex('b3', 2)).toEqual(['r1']);
+      // a slot no row holds the member in yields nothing.
+      expect(store.rowsByBookAtIndex('b1', 1)).toEqual([]);
+      expect(store.rowIdsByBookAtIndex('b1', 0)).toEqual(['r1']);
+
+      // both sides are multi, so the fixed-count owner (a book holds an ordered pair of rowIds — the
+      // same shape as a cell's optionIds) gets it too: books whose Nth rowId is the given row.
+      expect(store.bookIdsByRowAtIndex('r1', 0)).toEqual(['b1', 'b2', 'b3']);
+      expect(store.booksByRowAtIndex('r2', 1)).toEqual([{ id: 'b3', title: 'C', rowIds: ['r1', 'r2'] }]);
+      expect(store.bookIdsByRowAtIndex('r2', 0)).toEqual([]);
+    });
+
+    it('orders a fixed-count owner\'s members via the By-family (book owns its ordered rowIds)', () => {
+      const store = TestBed.inject(RowStore);
+      store.setAllRows([{ id: 'r1' }, { id: 'r2' }, { id: 'r3' }]);
+      store.setAllBooks([{ id: 'b1', title: 'A', rowIds: ['r1', 'r2'] }]);
+
+      // owner = book (a fixed count 2), member = row — the mirror of the row-owner direction above.
+      expect(store.rowIdsByBook('b1')).toEqual(['r1', 'r2']);
+      expect(store.indexOfRowByBook('r2', 'b1')).toBe(1);
+
+      store.swapRowsByBook('r1', 'r2', 'b1');
+      expect(store.rowIdsByBook('b1')).toEqual(['r2', 'r1']);
+      // syncForeignKeys (on by default) writes the new order back into the owner's own array key.
+      expect(store.bookById('b1')?.rowIds).toEqual(['r2', 'r1']);
+
+      store.reorderRowsByBook(['r1', 'r2'], 'b1');
+      expect(store.rowIdsByBook('b1')).toEqual(['r1', 'r2']);
+      expect(store.bookById('b1')?.rowIds).toEqual(['r1', 'r2']);
+
+      store.moveRowByBookToIndex('r1', 1, 'b1');
+      expect(store.rowIdsByBook('b1')).toEqual(['r2', 'r1']);
+      expect(store.bookById('b1')?.rowIds).toEqual(['r2', 'r1']);
+    });
   });
 
   describe('composite set-lookup (many:many -> array of every match)', () => {
@@ -367,6 +414,44 @@ describe('withEntityRelationship', () => {
       expect(typeof store['indexOfGroupByStudent']).toBe('function');
       expect(typeof store['indexOfStudentByGroup']).toBe('function');
       expect(typeof store['reorderGroupsByStudent']).toBe('function');
+      // the AtIndex filtered lookup is generated in both directions too
+      expect(typeof store['studentsByGroupAtIndex']).toBe('function');
+      expect(typeof store['groupsByStudentAtIndex']).toBe('function');
+    });
+
+    it('keeps only owners where the member is at the exact slot (both directions)', () => {
+      const store = TestBed.inject(GroupStore);
+      store.setAllGroups([{ id: 'g1' }, { id: 'g2' }]);
+      store.setAllStudents([
+        { id: 's1', groupIds: ['g1', 'g2'] },
+        { id: 's2', groupIds: ['g2', 'g1'] },
+        { id: 's3', groupIds: ['g1'] },
+      ]);
+
+      // students whose FIRST group is g1 — s2 has g1 at index 1, so it's excluded.
+      expect(store.studentIdsByGroupAtIndex('g1', 0)).toEqual(['s1', 's3']);
+      expect(store.studentIdsByGroupAtIndex('g1', 1)).toEqual(['s2']);
+      expect(store.studentsByGroupAtIndex('g2', 0)).toEqual([{ id: 's2', groupIds: ['g2', 'g1'] }]);
+      // reverse direction resolves off the derived order of each group's students: s1 lands first in
+      // both groups it joined, s2 lands second in both.
+      expect(store.groupIdsByStudentAtIndex('s1', 0)).toEqual(['g1', 'g2']);
+      expect(store.groupIdsByStudentAtIndex('s2', 1)).toEqual(['g2', 'g1']);
+    });
+
+    it('writes a reorder back into the array key its owner holds, but never fabricates one', () => {
+      const store = TestBed.inject(GroupStore);
+      store.setAllGroups([{ id: 'g1' }, { id: 'g2' }]);
+      store.setAllStudents([{ id: 's1', groupIds: ['g1', 'g2'] }]);
+
+      // a student holds groupIds, so reordering its groups persists into the entity.
+      store.reorderGroupsByStudent(['g2', 'g1'], 's1');
+      expect(store.groupIdsByStudent('s1')).toEqual(['g2', 'g1']);
+      expect(store.studentById('s1')?.groupIds).toEqual(['g2', 'g1']);
+
+      // a group does NOT hold a studentIds array, so reordering its students updates the lookup order
+      // (via the manual link) without inventing a key on the group entity.
+      store.reorderStudentsByGroup(['s1'], 'g1');
+      expect((store.groupById('g1') as unknown as Record<string, unknown>)['studentIds']).toBeUndefined();
     });
 
     it('does not collide when an id contains the delimiter character', () => {

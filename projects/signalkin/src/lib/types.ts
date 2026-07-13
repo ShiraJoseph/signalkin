@@ -158,11 +158,13 @@ export type RelationshipOptions = {
   /** Auto-populate the index from foreign keys as entities change. Default: `true`. Set `false` for explicit links only. */
   autoIndex?: boolean;
   /**
-   * Let `remove`/`move` mutations write the entities' foreign keys, so removal sticks for
-   * FK-derived links (`removeBookFromLibrary` clears the book's `libraryId`; `move` re-points it).
-   * Default: `true`. Set `false` to never write entities (the FK stays the source of truth and
-   * those mutations affect manual links only). Only works on a side whose `selectForeignId` is
-   * a property NAME (or defaulted) — a getter can't be written back, so getter sides are skipped.
+   * Let `remove`/`move` mutations and the ordering methods (`swap`/`reorder`/`move…ToIndex`) write the
+   * entities' foreign keys, so a change sticks for FK-derived links: `removeBookFromLibrary` clears the
+   * book's `libraryId`, `move` re-points it, and reordering an owner's members writes the new order into
+   * the owner's own array key (e.g. `cell.optionIds`). Default: `true`. Set `false` to never write
+   * entities (the FK stays the source of truth and those operations affect manual links only). Only works
+   * on a side whose `selectForeignId` is a property NAME (or defaulted) — a getter can't be written back,
+   * so getter sides are skipped; and reordering only writes a key the owner actually holds as an array.
    */
   syncForeignKeys?: boolean;
   /**

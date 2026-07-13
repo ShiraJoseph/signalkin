@@ -82,6 +82,17 @@ export const byProbe = (): void => {
   store.swapTomesByShelf('t1', 't2', 's1');
   store.reorderTomesByShelf(['t1', 't2'], 's1');
   store.moveTomeByShelfToIndex('t1', 0, 's1');
+  // mirror direction, both sides multi: a tome owns its fixed pair of shelfIds, so shelves order too.
+  assertType<number>(store.indexOfShelfByTome('s1', 't1'));
+  store.swapShelfsByTome('s1', 's2', 't1');
+  store.reorderShelfsByTome(['s1', 's2'], 't1');
+  store.moveShelfByTomeToIndex('s1', 0, 't1');
+  // filtered directional lookup, both sides multi so both directions exist (entity + id forms).
+  assertType<Shelf[]>(store.shelfsByTomeAtIndex('t1', 0));
+  assertType<(string | number)[]>(store.shelfIdsByTomeAtIndex('t1', 0));
+  // the fixed-count owner (a tome holds an ordered pair of shelfIds) gets it too.
+  assertType<Tome[]>(store.tomesByShelfAtIndex('s1', 0));
+  assertType<(string | number)[]>(store.tomeIdsByShelfAtIndex('s1', 0));
 };
 
 export const typecheckProbe = (): void => {

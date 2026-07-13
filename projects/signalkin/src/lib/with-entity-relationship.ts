@@ -205,9 +205,10 @@ type OrderingMethods<
 
 /**
  * The By-form of {@link OrderingMethods} plus indexOf, for a member that has MORE THAN ONE owner (owner
- * side is not count 1) and an open-ended `'many'` member side. The owner can't be inferred, so it is
- * named explicitly as the last argument: `indexOfCellByOption(cell, option)`. Members are passed as the
- * entity or its id; `reorder` requires that owner's complete member set.
+ * side is not count 1) and belongs to more than one of each owner (member side is multi — a fixed count
+ * 2+ or `'many'`). The owner can't be inferred, so it is named explicitly as the last argument:
+ * `indexOfCellByOption(cell, option)`, or `indexOfOptionByCell(option, cell)` in the mirror direction.
+ * Members are passed as the entity or its id; `reorder` requires that owner's complete member set.
  */
 type ByOrderingMethods<
   OwnerName extends string,
@@ -217,9 +218,8 @@ type ByOrderingMethods<
   MemberPlural extends string,
   MemberEntity,
   MemberCount extends Cardinality,
-> = IsSingle<OwnerCount> extends true
-  ? {}
-  : IsMany<MemberCount> extends true
+> = IsMulti<OwnerCount> extends true
+  ? IsMulti<MemberCount> extends true
     ? {
         [Key in `indexOf${Capitalize<MemberName>}By${Capitalize<OwnerName>}`]: (
           member: MemberEntity | EntityId,
@@ -243,7 +243,44 @@ type ByOrderingMethods<
           owner: OwnerEntity | EntityId,
         ) => void;
       }
-    : {};
+    : {}
+  : {};
+
+/**
+ * Filtered directional lookups that keep only the owners where the member sits at EXACTLY the given
+ * index in that owner's ordered member list, so index 0 is the first slot and a member showing up at
+ * index 1 is ignored. Generated when BOTH sides are multi (neither is count 1): the owner then holds an
+ * ordered array of two-or-more members (a fixed count 2+ or `'many'`), and the member belongs to more
+ * than one owner, so the same member can occupy a different slot in each — which is what makes filtering
+ * by index meaningful. Both the entity and the id form are returned, in the same order as the base
+ * `${OwnerPlural}By${MemberName}` lookup. The member is passed as the entity or its id.
+ *
+ * @example ensemblesByMusicianAtIndex(musician, 3) — ensembles where that musician plays the 4th chair.
+ */
+type IndexedLookupMethods<
+  OwnerName extends string,
+  OwnerPlural extends string,
+  OwnerEntity,
+  OwnerId extends EntityId,
+  OwnerCount extends Cardinality,
+  MemberName extends string,
+  MemberEntity,
+  MemberCount extends Cardinality,
+> = IsMulti<OwnerCount> extends true
+  ? IsMulti<MemberCount> extends true
+    ? {
+        [Key in `${OwnerPlural}By${Capitalize<MemberName>}AtIndex`]: (
+          member: MemberEntity | EntityId,
+          index: number,
+        ) => OwnerEntity[];
+      } & {
+        [Key in `${OwnerName}IdsBy${Capitalize<MemberName>}AtIndex`]: (
+          member: MemberEntity | EntityId,
+          index: number,
+        ) => OwnerId[];
+      }
+    : {}
+  : {};
 
 type RelationshipOutput<
   FromEntity,
@@ -269,6 +306,8 @@ type RelationshipOutput<
     OrderingMethods<ToName, ToCount, FromName, FromPlural, FromEntity, FromCount> &
     ByOrderingMethods<FromName, FromEntity, FromCount, ToName, ToPlural, ToEntity, ToCount> &
     ByOrderingMethods<ToName, ToEntity, ToCount, FromName, FromPlural, FromEntity, FromCount> &
+    IndexedLookupMethods<FromName, FromPlural, FromEntity, FromId, FromCount, ToName, ToEntity, ToCount> &
+    IndexedLookupMethods<ToName, ToPlural, ToEntity, ToId, ToCount, FromName, FromEntity, FromCount> &
     MutationMethods<FromEntity, FromName, ToEntity, ToName>;
 };
 
@@ -457,6 +496,30 @@ export const withEntityRelationship = <
         );
       };
 
+      /**
+       * Persists an owner's reordered member list into the owner's OWN array foreign key (e.g.
+       * `cell.optionIds`), so a swap/reorder/move survives in the entity, not just the manual link. Gated
+       * by syncForeignKeys, and only when the owner actually stores that key as an array — a 1:many owner
+       * keeps order through its members' back-references, so there is nothing to write and we never
+       * fabricate a key on a side that doesn't hold one.
+       */
+      const writeOwnerForeignOrder = (
+        entityMapKey: string,
+        updaterConfig: any,
+        foreignKey: string | undefined,
+        ownerId: EntityId,
+        orderedIds: EntityId[],
+      ): void => {
+        if (!syncForeignKeys || foreignKey === undefined) return;
+        const owner = innerStore[entityMapKey]()[ownerId];
+        if (!owner || !Array.isArray(owner[foreignKey])) return;
+        writeForeignIds(entityMapKey, updaterConfig, foreignKey, true, ownerId, () => orderedIds);
+      };
+      const writeFromOwnerOrder = (ownerId: EntityId, orderedIds: EntityId[]): void =>
+        writeOwnerForeignOrder(fromEntityMapKey, fromUpdaterConfig, fromForeignKey, ownerId, orderedIds);
+      const writeToOwnerOrder = (ownerId: EntityId, orderedIds: EntityId[]): void =>
+        writeOwnerForeignOrder(toEntityMapKey, toUpdaterConfig, toForeignKey, ownerId, orderedIds);
+
       // Removes the manual link, and (with syncForeignKeys) also clears the matching id from both
       // entities' foreign keys — otherwise an FK-derived link regenerates on the next read.
       const removeLink = (fromId: EntityId, toId: EntityId): void => {
@@ -595,10 +658,18 @@ export const withEntityRelationship = <
 
       // Ordering + indexOf over an owner's member list. The owner's ordered members are its entry in the
       // manual links map; mergeLinks keeps that array's order ahead of the FK-derived links, so writing it
-      // sets the order the get-by lookup returns. swap/reorder/move share this core, keyed by owner id.
-      const makeOrderingCore = (linksKey: string, membersOf: (ownerId: EntityId | undefined) => EntityId[]) => {
-        const writeOrder = (ownerId: EntityId, orderedIds: EntityId[]): void =>
+      // sets the order the get-by lookup returns. With syncForeignKeys the same order is also written into
+      // the owner entity's array foreign key (when it holds one). swap/reorder/move share this core, keyed
+      // by owner id.
+      const makeOrderingCore = (
+        linksKey: string,
+        membersOf: (ownerId: EntityId | undefined) => EntityId[],
+        writeOwnerOrder: (ownerId: EntityId, orderedIds: EntityId[]) => void,
+      ) => {
+        const writeOrder = (ownerId: EntityId, orderedIds: EntityId[]): void => {
           patchState(innerStore, { [linksKey]: { ...innerStore[linksKey](), [ownerId]: orderedIds } } as any);
+          writeOwnerOrder(ownerId, orderedIds);
+        };
 
         return {
           swap: (label: string, ownerId: EntityId, aId: EntityId | undefined, bId: EntityId | undefined): void => {
@@ -652,8 +723,9 @@ export const withEntityRelationship = <
         membersOf: (ownerId: EntityId | undefined) => EntityId[],
         ownerOf: (memberId: EntityId | undefined) => EntityId | undefined,
         resolveMember: (ref: any) => EntityId | undefined,
+        writeOwnerOrder: (ownerId: EntityId, orderedIds: EntityId[]) => void,
       ): void => {
-        const core = makeOrderingCore(linksKey, membersOf);
+        const core = makeOrderingCore(linksKey, membersOf, writeOwnerOrder);
 
         methods[`indexOf${ownerCap}${memberCap}`] = (member: any) => {
           const memberId = resolveMember(member) as EntityId;
@@ -679,8 +751,9 @@ export const withEntityRelationship = <
         };
       };
 
-      // By-family: the member has MORE THAN ONE owner (owner side not count 1) and the member side is the
-      // open-ended 'many', so the owner can't be inferred and is named as the last argument.
+      // By-family: the member has MORE THAN ONE owner (owner side not count 1) and belongs to more than
+      // one of each owner (member side multi — fixed 2+ or 'many'), so the owner can't be inferred and is
+      // named as the last argument.
       const installByOrdering = (
         ownerCap: string,
         memberCap: string,
@@ -689,8 +762,9 @@ export const withEntityRelationship = <
         membersOf: (ownerId: EntityId | undefined) => EntityId[],
         resolveOwner: (ref: any) => EntityId | undefined,
         resolveMember: (ref: any) => EntityId | undefined,
+        writeOwnerOrder: (ownerId: EntityId, orderedIds: EntityId[]) => void,
       ): void => {
-        const core = makeOrderingCore(linksKey, membersOf);
+        const core = makeOrderingCore(linksKey, membersOf, writeOwnerOrder);
 
         methods[`indexOf${memberCap}By${ownerCap}`] = (member: any, owner: any) =>
           membersOf(resolveOwner(owner)).indexOf(resolveMember(member) as EntityId);
@@ -711,25 +785,60 @@ export const withEntityRelationship = <
         };
       };
 
-      // Direction owner = from, members = to (e.g. a feature's options, or an option's cells).
+      // Filtered directional lookup: the owners where the member sits at EXACTLY `index` in the owner's
+      // ordered member list. Installed in the same By-family cases as installByOrdering (member 'many',
+      // owner multi) — a single-owner member has no choice of slot to filter on. Returns entities and ids.
+      const installIndexedLookup = (
+        ownerName: string,
+        ownerPlural: string,
+        memberCap: string,
+        ownerEntityMapKey: string,
+        membersOf: (ownerId: EntityId | undefined) => EntityId[],
+        ownersOf: (memberId: EntityId | undefined) => EntityId[],
+        resolveMember: (ref: any) => EntityId | undefined,
+      ): void => {
+        const ownerIdsAtIndex = (member: any, index: number): EntityId[] => {
+          const memberId = resolveMember(member);
+          return ownersOf(memberId).filter((ownerId) => membersOf(ownerId)[index] === memberId);
+        };
+        methods[`${ownerPlural}By${memberCap}AtIndex`] = (member: any, index: number) =>
+          resolveEntities(ownerIdsAtIndex(member, index), ownerEntityMapKey);
+        methods[`${ownerName}IdsBy${memberCap}AtIndex`] = (member: any, index: number) =>
+          ownerIdsAtIndex(member, index);
+      };
+
+      // Direction owner = from, members = to (e.g. a feature's options, or an option's cells). A single
+      // owner is inferred (one-arg installOrdering); a multi owner is named explicitly (installByOrdering),
+      // now for any multi member side (fixed count 2+ or 'many'), not just 'many'.
       if (isMulti(to.count)) {
         if (fromIsSingle) {
           installOrdering(fromCap, toCap, capitalize(toPlural), forwardLinksKey,
-            (ownerId) => toIdsByFrom(ownerId), (memberId) => fromIdsByTo(memberId)[0], resolveToRef);
-        } else if (to.count === 'many') {
+            (ownerId) => toIdsByFrom(ownerId), (memberId) => fromIdsByTo(memberId)[0], resolveToRef, writeFromOwnerOrder);
+        } else {
           installByOrdering(fromCap, toCap, capitalize(toPlural), forwardLinksKey,
-            (ownerId) => toIdsByFrom(ownerId), resolveFromRef, resolveToRef);
+            (ownerId) => toIdsByFrom(ownerId), resolveFromRef, resolveToRef, writeFromOwnerOrder);
         }
       }
       // Direction owner = to, members = from.
       if (isMulti(from.count)) {
         if (toIsSingle) {
           installOrdering(toCap, fromCap, capitalize(fromPlural), reverseLinksKey,
-            (ownerId) => fromIdsByTo(ownerId), (memberId) => toIdsByFrom(memberId)[0], resolveFromRef);
-        } else if (from.count === 'many') {
+            (ownerId) => fromIdsByTo(ownerId), (memberId) => toIdsByFrom(memberId)[0], resolveFromRef, writeToOwnerOrder);
+        } else {
           installByOrdering(toCap, fromCap, capitalize(fromPlural), reverseLinksKey,
-            (ownerId) => fromIdsByTo(ownerId), resolveToRef, resolveFromRef);
+            (ownerId) => fromIdsByTo(ownerId), resolveToRef, resolveFromRef, writeToOwnerOrder);
         }
+      }
+
+      // AtIndex filtered lookups apply whenever BOTH sides are multi: the owner holds an ordered array of
+      // 2+ members and the member belongs to more than one owner, so it can sit at a different slot in
+      // each. This is broader than the 'many'-only by-ordering gate above — a fixed-count member (a cell's
+      // two optionIds, an ensemble's four musicians) still gets it. Both directions.
+      if (isMulti(from.count) && isMulti(to.count)) {
+        installIndexedLookup(fromName, fromPlural, toCap, fromEntityMapKey,
+          (ownerId) => toIdsByFrom(ownerId), (memberId) => fromIdsByTo(memberId), resolveToRef);
+        installIndexedLookup(toName, toPlural, fromCap, toEntityMapKey,
+          (ownerId) => fromIdsByTo(ownerId), (memberId) => toIdsByFrom(memberId), resolveFromRef);
       }
 
       if (compositeLookups) {
