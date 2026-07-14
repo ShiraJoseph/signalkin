@@ -1,0 +1,27 @@
+<svg width="23.3205" height="26" viewBox="0 0 23.3205 26" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="sk" gradientUnits="userSpaceOnUse" cx="2.5" cy="21.5" r="26" fx="2.5" fy="21.5">
+      <stop offset="0" stop-color="#f11653"/>
+      <stop offset="0.34" stop-color="#e90464"/>
+      <stop offset="0.64" stop-color="#f736e3"/>
+      <stop offset="1" stop-color="#8514f5"/>
+    </radialGradient>
+  </defs>
+  <g stroke="url(#sk)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M11.6603 3 L3 8"/>
+    <path d="M11.6603 3 L20.3205 8"/>
+    <path d="M3 8 L11.6603 13"/>
+    <path d="M11.6603 13 L11.6603 23"/>
+    <path d="M11.6603 23 L3 18"/>
+    <path d="M20.3205 8 L20.3205 18"/>
+  </g>
+  <g fill="url(#sk)">
+    <circle cx="11.6603" cy="3" r="3"/>
+    <circle cx="3" cy="8" r="3"/>
+    <circle cx="20.3205" cy="8" r="3"/>
+    <circle cx="11.6603" cy="13" r="3"/>
+    <circle cx="3" cy="18" r="3"/>
+    <circle cx="20.3205" cy="18" r="3"/>
+    <circle cx="11.6603" cy="23" r="3"/>
+  </g>
+</svg>

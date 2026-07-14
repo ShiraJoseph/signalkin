@@ -4,6 +4,10 @@
   Edit the root README.md instead; any changes made here will be overwritten on the next build.
 -->
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ShiraJoseph/signalkin/main/docs/logo.png" alt="signalkin" width="112">
+</p>
+
 # signalkin
 
 [![npm](https://img.shields.io/npm/v/signalkin.svg)](https://www.npmjs.com/package/signalkin)
