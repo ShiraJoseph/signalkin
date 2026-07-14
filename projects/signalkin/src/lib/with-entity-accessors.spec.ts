@@ -104,6 +104,7 @@ describe('withEntityAccessors', () => {
     expect(store.bookById('b2')).toEqual(hobbit);
     expect(store.bookById('nope')).toBeUndefined();
     expect(store.hasBook('b1')).toBe(true);
+    expect(store.hasBook(hobbit)).toBe(true);
     expect(store.hasBook('nope')).toBe(false);
   });
 
@@ -124,6 +125,24 @@ describe('withEntityAccessors', () => {
 
     store.prependBooks([{ id: 'b4', title: 'Piranesi', pages: 245 }]);
     expect(store.bookIds()[0]).toBe('b4');
+  });
+
+  it('reorders the collection via swap, full reorder, and move-to-index', () => {
+    store.addBook(emma); // [b1, b2, b3]
+
+    store.swapBooks('b1', 'b3');
+    expect(store.bookIds()).toEqual(['b3', 'b2', 'b1']);
+
+    store.moveBookToIndex('b3', 2);
+    expect(store.bookIds()).toEqual(['b2', 'b1', 'b3']);
+
+    store.reorderBooks([dune, hobbit, emma]); // full set as entities
+    expect(store.bookIds()).toEqual(['b1', 'b2', 'b3']);
+  });
+
+  it('ignores an incomplete collection reorder (strict full set)', () => {
+    store.reorderBooks([hobbit]); // missing dune
+    expect(store.bookIds()).toEqual(['b1', 'b2']);
   });
 
   it('replaces with setBook and the whole collection with setAllBooks', () => {
@@ -177,6 +196,19 @@ describe('withEntityAccessors', () => {
     expect(store.bookIds()).toEqual(['b2']);
 
     store.removeAllBooks();
+    expect(store.bookCount()).toBe(0);
+  });
+
+  it('accepts entities (not just ids) in update / remove', () => {
+    store.setAllBooks([dune, hobbit]);
+
+    store.updateBook(dune, { pages: 42 });
+    expect(store.bookById('b1')?.pages).toBe(42);
+
+    store.removeBook(hobbit);
+    expect(store.hasBook('b2')).toBe(false);
+
+    store.removeBooks([dune]);
     expect(store.bookCount()).toBe(0);
   });
 

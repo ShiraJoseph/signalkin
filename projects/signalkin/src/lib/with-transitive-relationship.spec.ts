@@ -43,11 +43,11 @@ const CatalogStore = signalStore(
     bookConfig,
   ),
   withEntityRelationship(
-    { name: 'librarySystem', count: 1 },
-    { name: 'library', count: 'many', plural: 'libraries' },
+    { collection: 'librarySystem', count: 1 },
+    { collection: 'library', count: 'many', plural: 'libraries' },
   ),
-  withEntityRelationship({ name: 'library', count: 1 }, { name: 'row', count: 'many' }),
-  withEntityRelationship({ name: 'row', count: 1 }, { name: 'book', count: 'many' }),
+  withEntityRelationship({ collection: 'library', count: 1 }, { collection: 'row', count: 'many' }),
+  withEntityRelationship({ collection: 'row', count: 1 }, { collection: 'book', count: 'many' }),
   withTransitiveRelationship({ from: 'librarySystem', to: 'row', through: 'library' }),
   withTransitiveRelationship({ from: 'librarySystem', to: 'book', through: ['library', 'row'] }),
   withTransitiveRelationship({ from: 'library', to: 'book', through: 'row', fromPlural: 'libraries' }),
@@ -81,44 +81,44 @@ describe('withTransitiveRelationship', () => {
     store.setAllBooks(books);
   });
 
-  it('walks one intermediary in both directions', () => {
+  it('walks one intermediary in both directions (entity or id)', () => {
     expect(store.rowsByLibrarySystem(cityWide)).toEqual([rows[0], rows[1]]);
-    expect(store.rowsByLibrarySystemId('s2')).toEqual([rows[2]]);
-    expect(store.rowIdsByLibrarySystemId('s1')).toEqual(['r1', 'r2']);
+    expect(store.rowsByLibrarySystem('s2')).toEqual([rows[2]]);
+    expect(store.rowIdsByLibrarySystem('s1')).toEqual(['r1', 'r2']);
     expect(store.librarySystemsByRow(rows[0])).toEqual([cityWide]);
-    expect(store.librarySystemsByRowId('r3')).toEqual([county]);
-    expect(store.librarySystemIdsByRowId('r1')).toEqual(['s1']);
+    expect(store.librarySystemsByRow('r3')).toEqual([county]);
+    expect(store.librarySystemIdsByRow('r1')).toEqual(['s1']);
   });
 
   it('walks multiple intermediaries (through as an array)', () => {
     expect(store.booksByLibrarySystem(cityWide)).toEqual(books);
-    expect(store.librarySystemsByBookId('b1')).toEqual([cityWide]);
+    expect(store.librarySystemsByBook('b1')).toEqual([cityWide]);
   });
 
   it('uses custom plurals in generated names (fromPlural / relationship plural)', () => {
     // Transitive library→book with fromPlural 'libraries'.
-    expect(store.librariesByBookId('b1')).toEqual([libraries[0]]);
+    expect(store.librariesByBook('b1')).toEqual([libraries[0]]);
     expect(store.booksByLibrary(libraries[0])).toEqual([books[0]]);
     // Direct librarySystem→library with the library side's plural.
-    expect(store.librariesByLibrarySystemId('s1')).toEqual([libraries[0], libraries[1]]);
-    expect((store as any).librarysByLibrarySystemId).toBeUndefined();
+    expect(store.librariesByLibrarySystem('s1')).toEqual([libraries[0], libraries[1]]);
+    expect((store as any).librarysByLibrarySystem).toBeUndefined();
   });
 
   it('reflects entity changes reactively', () => {
     store.updateLibrary('l2', { librarySystemId: 's2' });
-    expect(store.rowIdsByLibrarySystemId('s1')).toEqual(['r1']);
-    expect(store.rowIdsByLibrarySystemId('s2')).toEqual(['r2', 'r3']);
+    expect(store.rowIdsByLibrarySystem('s1')).toEqual(['r1']);
+    expect(store.rowIdsByLibrarySystem('s2')).toEqual(['r2', 'r3']);
   });
 
   it('dedupes when multiple paths reach the same endpoint', () => {
     store.addRowToLibrary('l2', 'r1');
-    const rowIds = store.rowIdsByLibrarySystemId('s1');
+    const rowIds = store.rowIdsByLibrarySystem('s1');
     expect(rowIds.filter((id) => id === 'r1')).toEqual(['r1']);
   });
 
   it('returns empty arrays for unknown ids', () => {
-    expect(store.rowsByLibrarySystemId('nope')).toEqual([]);
-    expect(store.librarySystemsByRowId('nope')).toEqual([]);
+    expect(store.rowsByLibrarySystem('nope')).toEqual([]);
+    expect(store.librarySystemsByRow('nope')).toEqual([]);
   });
 
   it('throws a clear error when a hop map is missing', () => {
@@ -132,7 +132,7 @@ describe('withTransitiveRelationship', () => {
     );
     const broken = TestBed.inject(BrokenStore);
 
-    expect(() => broken.rowsByLibrarySystemId('s1')).toThrowError(
+    expect(() => broken.rowsByLibrarySystem('s1')).toThrowError(
       /librarySystemLibraryMap.*librarySystem → library → row/s,
     );
   });

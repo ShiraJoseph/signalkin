@@ -4,9 +4,10 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
-    "build": "ng build",
+    "build": "npm run sync:readme && ng build signalkin",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "sync:readme": "node scripts/sync-readme.mjs"
   },
   "private": true,
   "packageManager": "npm@11.13.0",

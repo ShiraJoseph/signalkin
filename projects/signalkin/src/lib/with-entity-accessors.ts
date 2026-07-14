@@ -28,7 +28,7 @@ import {
   upsertEntities,
   upsertEntity,
 } from '@ngrx/signals/entities';
-import { capitalize } from './internal-helpers';
+import { capitalize, toIdReader, toRefResolver } from './internal-helpers';
 import { CollectionNames, EntityOf, EntityPredicate, RequiredEntityMaps } from './types';
 
 /** What withEntityAccessors needs from a config: the collection name, its `selectId` if not the `id` property, and its `plural` if not `+s`. An `entityConfig(...)` result works as-is. */
@@ -81,10 +81,13 @@ type EntityAccessorMethods<Store, Configs extends readonly EntityAccessorConfig[
 } & {
   [Name in Names as `upsert${Capitalize<PluralOf<Configs, Name>>}`]: (entities: EntityOf<Store, Name>[]) => void;
 } & {
-  [Name in Names as `update${Capitalize<Name>}`]: (id: EntityId, changes: EntityChanges<EntityOf<Store, Name>>) => void;
+  [Name in Names as `update${Capitalize<Name>}`]: (
+    entity: EntityOf<Store, Name> | EntityId,
+    changes: EntityChanges<EntityOf<Store, Name>>,
+  ) => void;
 } & {
   [Name in Names as `update${Capitalize<PluralOf<Configs, Name>>}`]: (
-    idsOrPredicate: EntityId[] | EntityPredicate<EntityOf<Store, Name>>,
+    entitiesOrPredicate: (EntityOf<Store, Name> | EntityId)[] | EntityPredicate<EntityOf<Store, Name>>,
     changes: EntityChanges<EntityOf<Store, Name>>,
   ) => void;
 } & {
@@ -92,17 +95,28 @@ type EntityAccessorMethods<Store, Configs extends readonly EntityAccessorConfig[
     changes: EntityChanges<EntityOf<Store, Name>>,
   ) => void;
 } & {
-  [Name in Names as `remove${Capitalize<Name>}`]: (id: EntityId) => void;
+  [Name in Names as `remove${Capitalize<Name>}`]: (entity: EntityOf<Store, Name> | EntityId) => void;
 } & {
   [Name in Names as `remove${Capitalize<PluralOf<Configs, Name>>}`]: (
-    idsOrPredicate: EntityId[] | EntityPredicate<EntityOf<Store, Name>>,
+    entitiesOrPredicate: (EntityOf<Store, Name> | EntityId)[] | EntityPredicate<EntityOf<Store, Name>>,
   ) => void;
 } & {
   [Name in Names as `removeAll${Capitalize<PluralOf<Configs, Name>>}`]: () => void;
 } & {
+  [Name in Names as `swap${Capitalize<PluralOf<Configs, Name>>}`]: (
+    entityA: EntityOf<Store, Name> | EntityId,
+    entityB: EntityOf<Store, Name> | EntityId,
+  ) => void;
+} & {
+  [Name in Names as `reorder${Capitalize<PluralOf<Configs, Name>>}`]: (
+    orderedEntities: (EntityOf<Store, Name> | EntityId)[],
+  ) => void;
+} & {
+  [Name in Names as `move${Capitalize<Name>}ToIndex`]: (entity: EntityOf<Store, Name> | EntityId, index: number) => void;
+} & {
   [Name in Names as `${Name}ById`]: (id: EntityId) => EntityOf<Store, Name> | undefined;
 } & {
-  [Name in Names as `has${Capitalize<Name>}`]: (id: EntityId) => boolean;
+  [Name in Names as `has${Capitalize<Name>}`]: (entity: EntityOf<Store, Name> | EntityId) => boolean;
 };
 
 type EntityAccessorsOutput<Store, Configs extends readonly EntityAccessorConfig[], Names extends string> = {
@@ -112,43 +126,17 @@ type EntityAccessorsOutput<Store, Configs extends readonly EntityAccessorConfig[
 };
 
 /**
- * Adds the everyday operations for entity collections that already exist on the store — the
- * standard methods (one per ngrx updater, so no more `withMethods` blocks of
- * `patchState(store, upsertEntity(...))`) plus convenience signals, every member named by
- * collection. Call it ONCE, after your `withEntities` list.
- *
- * With no arguments it covers EVERY collection on the store. Pass configs to cover only those
- * collections — also how a custom `selectId` gets honored, since ngrx doesn't expose it from
- * `withEntities` (an `entityConfig(...)` result works as-is; a collection without a config
- * defaults to the `id` property). A config may also name the collection's `plural`
- * (`{ ...libraryConfig, plural: 'libraries' }`) to replace the default `+s` in every
- * pluralized member (`libraries()`, `setAllLibraries`, ...).
- *
- * @param configs none for all collections, or the configs of the collections to cover
+ * Standard collection methods and convenience signals for the store's entities, named by collection — no args covers every collection, or pass configs to narrow and to honor a custom `selectId` / `plural`.
  *
  * @example
  * signalStore(
- *   withEntities(libraryConfig),
  *   withEntities(bookConfig),
- *   withEntityAccessors(),           // accessors for library AND book
+ *   withEntityAccessors(bookConfig),
  * );
- * // From withEntities: bookEntityMap() · bookIds() · bookEntities()
- * // Added signals:     books() · bookMap() · bookCount()
- * // Lookups:           bookById(id) · hasBook(id)
- * // Add/set/upsert:    addBook(book) · addBooks(books) · prependBook · prependBooks
- * //                    setBook · setBooks · setAllBooks · upsertBook · upsertBooks
- * // Update:            updateBook(id, changes) · updateBooks(ids | predicate, changes) · updateAllBooks(changes)
- * // Remove:            removeBook(id) · removeBooks(ids | predicate) · removeAllBooks()
- * // ...and the same set for library.
- *
- * @example
- * // Only the book collection, with its custom selectId honored:
- * const bookConfig = entityConfig({ entity: type<Book>(), collection: 'book', selectId: (book) => book.isbn });
- * signalStore(
- *   withEntities(libraryConfig),
- *   withEntities(bookConfig),
- *   withEntityAccessors(bookConfig), // book accessors only; updates/removes key on isbn
- * );
+ * // books(), bookMap(), bookCount(), bookById(id), hasBook(book | id)
+ * // addBook, addBooks, prependBook, setBook, setAllBooks, upsertBook
+ * // updateBook(book | id, changes), updateAllBooks(changes), removeBook(book | id), removeAllBooks()
+ * // swapBooks(a, b), reorderBooks(orderedBooks), moveBookToIndex(book | id, index) reorder the collection
  */
 export const withEntityAccessors = <
   const Configs extends readonly EntityAccessorConfig[],
@@ -165,6 +153,7 @@ export const withEntityAccessors = <
                 `for '${config.collection}' before withEntityAccessors.`,
             );
           }
+
           return config.collection;
         })
       : Object.keys(innerStore)
@@ -193,45 +182,96 @@ export const withEntityAccessors = <
       const methods: Record<string, (...args: any[]) => unknown> = {};
 
       resolveCollections(innerStore).forEach((collection) => {
-        const cap = capitalize(collection);
-        const pluralCap = capitalize(pluralFor(collection));
+        const capitalizedCollection = capitalize(collection);
+        const capitalizedPlural = capitalize(pluralFor(collection));
         const entityMapKey = `${collection}EntityMap`;
         const updaterConfig = { collection, selectId: selectIdFor(collection) } as any;
+        const resolveRef = toRefResolver(toIdReader(selectIdFor(collection), 'id'));
+        const resolveTargets = (entitiesOrPredicate: unknown): unknown =>
+          Array.isArray(entitiesOrPredicate) ? entitiesOrPredicate.map(resolveRef) : entitiesOrPredicate;
 
-        methods[`add${cap}`] = (entity: unknown) => patchState(innerStore, addEntity(entity, updaterConfig));
-        methods[`add${pluralCap}`] = (entities: unknown[]) =>
+        methods[`add${capitalizedCollection}`] = (entity: unknown) => patchState(innerStore, addEntity(entity, updaterConfig));
+        methods[`add${capitalizedPlural}`] = (entities: unknown[]) =>
           patchState(innerStore, addEntities(entities, updaterConfig));
-        methods[`prepend${cap}`] = (entity: unknown) => patchState(innerStore, prependEntity(entity, updaterConfig));
-        methods[`prepend${pluralCap}`] = (entities: unknown[]) =>
+        methods[`prepend${capitalizedCollection}`] = (entity: unknown) => patchState(innerStore, prependEntity(entity, updaterConfig));
+        methods[`prepend${capitalizedPlural}`] = (entities: unknown[]) =>
           patchState(innerStore, prependEntities(entities, updaterConfig));
-        methods[`set${cap}`] = (entity: unknown) => patchState(innerStore, setEntity(entity, updaterConfig));
-        methods[`set${pluralCap}`] = (entities: unknown[]) =>
+        methods[`set${capitalizedCollection}`] = (entity: unknown) => patchState(innerStore, setEntity(entity, updaterConfig));
+        methods[`set${capitalizedPlural}`] = (entities: unknown[]) =>
           patchState(innerStore, setEntities(entities, updaterConfig));
-        methods[`setAll${pluralCap}`] = (entities: unknown[]) =>
+        methods[`setAll${capitalizedPlural}`] = (entities: unknown[]) =>
           patchState(innerStore, setAllEntities(entities, updaterConfig));
-        methods[`upsert${cap}`] = (entity: unknown) => patchState(innerStore, upsertEntity(entity, updaterConfig));
-        methods[`upsert${pluralCap}`] = (entities: unknown[]) =>
+        methods[`upsert${capitalizedCollection}`] = (entity: unknown) => patchState(innerStore, upsertEntity(entity, updaterConfig));
+        methods[`upsert${capitalizedPlural}`] = (entities: unknown[]) =>
           patchState(innerStore, upsertEntities(entities, updaterConfig));
-        methods[`update${cap}`] = (id: EntityId, changes: unknown) =>
-          patchState(innerStore, updateEntity({ id, changes } as any, updaterConfig));
-        methods[`update${pluralCap}`] = (idsOrPredicate: EntityId[] | EntityPredicate<unknown>, changes: unknown) =>
+        methods[`update${capitalizedCollection}`] = (ref: unknown, changes: unknown) =>
+          patchState(innerStore, updateEntity({ id: resolveRef(ref), changes } as any, updaterConfig));
+        methods[`update${capitalizedPlural}`] = (entitiesOrPredicate: unknown, changes: unknown) =>
           patchState(
             innerStore,
             updateEntities(
-              (Array.isArray(idsOrPredicate)
-                ? { ids: idsOrPredicate, changes }
-                : { predicate: idsOrPredicate, changes }) as any,
+              (Array.isArray(entitiesOrPredicate)
+                ? { ids: resolveTargets(entitiesOrPredicate), changes }
+                : { predicate: entitiesOrPredicate, changes }) as any,
               updaterConfig,
             ),
           );
-        methods[`updateAll${pluralCap}`] = (changes: unknown) =>
+        methods[`updateAll${capitalizedPlural}`] = (changes: unknown) =>
           patchState(innerStore, updateAllEntities(changes as any, updaterConfig));
-        methods[`remove${cap}`] = (id: EntityId) => patchState(innerStore, removeEntity(id, updaterConfig));
-        methods[`remove${pluralCap}`] = (idsOrPredicate: EntityId[] | EntityPredicate<unknown>) =>
-          patchState(innerStore, removeEntities(idsOrPredicate as any, updaterConfig));
-        methods[`removeAll${pluralCap}`] = () => patchState(innerStore, removeAllEntities(updaterConfig));
+        methods[`remove${capitalizedCollection}`] = (ref: unknown) =>
+          patchState(innerStore, removeEntity(resolveRef(ref) as EntityId, updaterConfig));
+        methods[`remove${capitalizedPlural}`] = (entitiesOrPredicate: unknown) =>
+          patchState(innerStore, removeEntities(resolveTargets(entitiesOrPredicate) as any, updaterConfig));
+        methods[`removeAll${capitalizedPlural}`] = () => patchState(innerStore, removeAllEntities(updaterConfig));
+
+        // Ordering mutations over the collection's own id order (what `${collection}Entities` follows).
+        const idsKey = `${collection}Ids`;
+        const writeIds = (ids: EntityId[]): void => patchState(innerStore, { [idsKey]: ids } as any);
+
+        methods[`swap${capitalizedPlural}`] = (aRef: unknown, bRef: unknown) => {
+          const ids = [...(innerStore[idsKey]() as EntityId[])];
+          const indexA = ids.indexOf(resolveRef(aRef) as EntityId);
+          const indexB = ids.indexOf(resolveRef(bRef) as EntityId);
+
+          if (indexA === -1 || indexB === -1) {
+            console.warn(`signalkin: swap${capitalizedPlural} — both entities must be in the '${collection}' collection; call ignored.`);
+            return;
+          }
+
+          [ids[indexA], ids[indexB]] = [ids[indexB], ids[indexA]];
+          writeIds(ids);
+        };
+
+        methods[`reorder${capitalizedPlural}`] = (orderedEntities: unknown[]) => {
+          const orderedIds = (orderedEntities ?? []).map(resolveRef).filter((id): id is EntityId => id !== undefined);
+          const current = innerStore[idsKey]() as EntityId[];
+          const isFullPermutation =
+            orderedIds.length === current.length &&
+            new Set(orderedIds).size === orderedIds.length &&
+            orderedIds.every((id) => current.includes(id));
+
+          if (!isFullPermutation) {
+            console.warn(`signalkin: reorder${capitalizedPlural} — pass every '${collection}' entity exactly once; call ignored.`);
+            return;
+          }
+
+          writeIds(orderedIds);
+        };
+
+        methods[`move${capitalizedCollection}ToIndex`] = (ref: unknown, index: number) => {
+          const ids = [...(innerStore[idsKey]() as EntityId[])];
+          const currentIndex = ids.indexOf(resolveRef(ref) as EntityId);
+
+          if (currentIndex === -1) return;
+
+          const target = Math.max(0, Math.min(index, ids.length - 1));
+          const [moved] = ids.splice(currentIndex, 1);
+          ids.splice(target, 0, moved);
+          writeIds(ids);
+        };
+
         methods[`${collection}ById`] = (id: EntityId) => innerStore[entityMapKey]()[id];
-        methods[`has${cap}`] = (id: EntityId) => innerStore[entityMapKey]()[id] !== undefined;
+        methods[`has${capitalizedCollection}`] = (ref: unknown) => innerStore[entityMapKey]()[resolveRef(ref) as EntityId] !== undefined;
       });
 
       return methods;
