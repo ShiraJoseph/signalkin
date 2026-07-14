@@ -1,7 +1,25 @@
 {
   "name": "signalkin",
-  "version": "0.2.0",
+  "version": "0.2.1",
+  "description": "Relationships and everyday collection methods for @ngrx/signals entities.",
   "license": "MIT",
+  "keywords": [
+    "angular",
+    "ngrx",
+    "signals",
+    "signalstore",
+    "entities",
+    "relationships",
+    "state-management"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ShiraJoseph/signalkin.git"
+  },
+  "homepage": "https://github.com/ShiraJoseph/signalkin#readme",
+  "bugs": {
+    "url": "https://github.com/ShiraJoseph/signalkin/issues"
+  },
   "peerDependencies": {
     "@angular/core": "^22.0.0",
     "@ngrx/signals": "^21.1.1"
