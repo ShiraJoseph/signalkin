@@ -101,6 +101,8 @@ export class App {
 }
 ```
 
+**Writing several at once?** Use the plural setter (`addTasks(tasks)`) instead of the singular one in a loop. Each singular call copies the whole entity map and id list and rebuilds any relationship lookups, so N `addTask` calls do that N times. One `addTasks` call does it once.
+
 ---
 
 ### Method: `withEntityRelationship(from, to, options?)`
