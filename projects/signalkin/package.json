@@ -1,6 +1,6 @@
 {
   "name": "signalkin",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Relationships and everyday collection methods for @ngrx/signals entities.",
   "license": "MIT",
   "keywords": [
